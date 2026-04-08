@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import BottomNav from '@/components/BottomNav';
@@ -57,15 +57,16 @@ export default function HewanSaya() {
           .pcs-val { font-size: 13.5px; font-weight: 800; color: var(--ink); }
           .pcs-label { font-size: 9.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; margin-top: 2px; }
           
-          .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-          .action-btn { background: var(--white); border-radius: 14px; border: 1.5px solid var(--border); padding: 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: all .2s; color: var(--ink); text-decoration: none; }
-          .action-btn:active { transform: scale(.96); border-color: var(--pr); }
-          .ab-icon { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-          .ab-label { font-size: 12.5px; font-weight: 700; }
-          .ab-sub { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
-
-          .add-pet-btn { background: var(--white); border-radius: 18px; border: 2px dashed var(--border); padding: 18px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all .2s; margin-bottom: 20px; }
+          .add-pet-btn { background: var(--white); border-radius: 18px; border: 2px dashed var(--border); padding: 18px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all .2s; margin-bottom: 16px; }
           .add-pet-btn:active { background: var(--pr-pale); border-color: var(--pr); }
+
+          .ai-banner { background: linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #f59e0b 100%); border-radius: 20px; padding: 18px 20px; display: flex; align-items: center; gap: 14px; cursor: pointer; text-decoration: none; transition: all .2s; margin-bottom: 20px; box-shadow: 0 6px 24px rgba(124,58,237,0.3); }
+          .ai-banner:active { transform: scale(.98); }
+          .ai-banner-icon { width: 48px; height: 48px; background: rgba(255,255,255,.2); border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; backdrop-filter: blur(8px); }
+          .ai-banner-info { flex: 1; }
+          .ai-banner-label { font-size: 15px; font-weight: 800; color: white; }
+          .ai-banner-sub { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 3px; }
+          .ai-banner-arrow { color: rgba(255,255,255,.7); font-size: 20px; }
         `}</style>
 
         <div className="section-head">
@@ -107,30 +108,23 @@ export default function HewanSaya() {
           ))}
         </div>
 
-        <div className="section-head">
-          <div className="section-title">Aksi Cepat</div>
-        </div>
-        <div className="action-grid">
-          <a href="/layanan" className="action-btn">
-            <div className="ab-icon" style={{ background: 'var(--pr-pale)' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--pr)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-            <div><div className="ab-label">Layanan</div><div className="ab-sub">Lihat fasilitas</div></div>
-          </a>
-          <a href="/rekam-medis" className="action-btn">
-            <div className="ab-icon" style={{ background: 'var(--blue-pale)' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
-            <div><div className="ab-label">Rekam Medis</div><div className="ab-sub">Lihat riwayat</div></div>
-          </a>
-          <a href="/konsultasi" className="action-btn">
-            <div className="ab-icon" style={{ background: 'var(--green-pale)' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
-            <div><div className="ab-label">Konsultasi</div><div className="ab-sub">Tanya dokter</div></div>
-          </a>
-        </div>
-
         <div className="add-pet-btn" onClick={() => alert('Fitur tambah hewan akan segera hadir!')}>
           <span style={{ fontSize: '22px' }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </span>
           <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--muted)' }}>Daftarkan Hewan Baru ke Klinik</span>
         </div>
+
+        <a href="/diagnosa-ai" className="ai-banner">
+          <div className="ai-banner-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2z"/><path d="M19 8h-2V6a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2z"/><path d="M8 12h.01"/><path d="M16 12h.01"/><path d="M9 16c1-1 2-1 3-1s2 0 3 1"/></svg>
+          </div>
+          <div className="ai-banner-info">
+            <div className="ai-banner-label">🩺 Diagnosa AI</div>
+            <div className="ai-banner-sub">Ceritakan gejala hewan Anda, AI akan bantu analisis</div>
+          </div>
+          <span className="ai-banner-arrow">›</span>
+        </a>
       </div>
       <BottomNav />
     </div>
