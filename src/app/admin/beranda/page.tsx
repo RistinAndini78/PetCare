@@ -4,58 +4,162 @@ import { useState, useEffect } from 'react';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopbar from '@/components/AdminTopbar';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client';
 
 export default function AdminBeranda() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [adminName, setAdminName] = useState('drh. Andi Pratama');
+  const supabase = createClient();
+
+  // State Identitas & Loading
+  const [adminName, setAdminName] = useState('Admin Klinik');
+  const [loading, setLoading] = useState(true);
+
+  // State Statistik Utama
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [dueReminders, setDueReminders] = useState(0);
+  
+  // State Grafik & List Data
+  const [chartHeights, setChartHeights] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [chartLabels, setChartLabels] = useState<string[]>(['S', 'S', 'R', 'K', 'J', 'S', 'M']);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [liveReminders, setLiveReminders] = useState<any[]>([]);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('petcare_user');
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser);
-        setAdminName(user.name);
-      } catch (e) {}
-    }
+    fetchDashboardData();
   }, []);
 
-  const patients = [
-    { id: '#P-001', owner: 'Siti Rahayu', pet: 'Luna (Kucing)', treatment: 'Vaksin Rabies', status: 'Belum Datang', statusClass: 's-wait' },
-    { id: '#P-002', owner: 'Rudi Santoso', pet: 'Buddy (Anjing)', treatment: 'Check-up Rutin', status: 'Selesai', statusClass: 's-done' },
-  ];
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      // 1. Ambil Nama Admin dari Local Storage
+      const storedUser = localStorage.getItem('petcare_user');
+      if (storedUser) {
+        try {
+          const user = JSON.parse(storedUser);
+          setAdminName(user.name || 'Admin Klinik');
+        } catch (e) { console.error("Error parse user", e); }
+      }
 
-  const filteredPatients = patients.filter(p => 
-    p.owner.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.pet.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      // 2. Query Total Pasien & List Pasien Terbaru
+      const { data: dataPasien, count: pCount, error: pError } = await supabase
+        .from('patients')
+        .select('*, owners(full_name)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (pError) throw pError;
+      setTotalPatients(pCount || 0);
+      
+      if (dataPasien) {
+        setPatients(dataPasien.map(p => ({
+          id: `#P-${p.id.toString().slice(-4)}`,
+          realId: p.id,
+          owner: p.owners?.full_name || 'Umum',
+          pet: p.name,
+          species: p.species,
+          status: 'Terdaftar',
+          statusClass: 's-done'
+        })));
+      }
+
+      // 3. Logika Reminder (Jatuh Tempo)
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      
+      const { data: schedules } = await supabase
+        .from('vaccination_schedules')
+        .select('*, patients(name, species)')
+        .eq('status', 'scheduled')
+        .order('next_vaccine_date', { ascending: true });
+
+      if (schedules) {
+        const dueCount = schedules.filter(s => s.next_vaccine_date <= todayStr).length;
+        setDueReminders(dueCount);
+
+        const formattedReminders = schedules.slice(0, 5).map(s => {
+          const targetDate = new Date(s.next_vaccine_date);
+          const diffDays = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          return {
+            name: s.patients?.name,
+            species: s.patients?.species,
+            vaccine: s.vaccine_name,
+            dueText: diffDays <= 0 ? 'Hari ini' : `${diffDays} hari lagi`,
+            color: diffDays <= 0 ? '#ff4757' : diffDays <= 3 ? '#ffa502' : '#8e52fc'
+          };
+        });
+        setLiveReminders(formattedReminders);
+      }
+
+      // 4. LOGIKA GRAFIK DINAMIS (Aktivitas 7 Hari Terakhir)
+      const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+      const counts = [0, 0, 0, 0, 0, 0, 0];
+      const labels = [];
+      
+      const startDate = new Date();
+      startDate.setDate(now.getDate() - 6); 
+      const startStr = startDate.toISOString().split('T')[0];
+
+      const { data: recentVisits, error: visitError } = await supabase
+        .from('medical_records')
+        .select('treatment_date')
+        .gte('treatment_date', startStr)
+        .lte('treatment_date', todayStr);
+
+      if (visitError) throw visitError;
+
+      if (recentVisits) {
+        for (let i = 0; i < 7; i++) {
+          const target = new Date();
+          target.setDate(startDate.getDate() + i);
+          const targetStr = target.toISOString().split('T')[0];
+          
+          labels.push(dayNames[target.getDay()]);
+          // Filter data yang cocok dengan tanggal spesifik di loop
+          counts[i] = recentVisits.filter(v => v.treatment_date === targetStr).length;
+        }
+
+        const maxVal = Math.max(...counts, 1);
+        setChartHeights(counts.map(c => Math.round((c / maxVal) * 100)));
+        setChartLabels(labels);
+      }
+
+    } catch (error) {
+      console.error("Dashboard error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="admin-body">
       <AdminSidebar active="beranda" />
-      
+
       <main className="main-content">
-        <AdminTopbar title="Dashboard Utama" name={adminName} onSearch={setSearchQuery} />
-        
+        <AdminTopbar title="Dashboard Utama" name={adminName} />
+
         <div className="scroll-area">
           <div className="metrics-grid">
             <div className="m-card m-purple">
               <span className="m-label">Total Pasien</span>
-              <div className="m-val">150</div>
-              <span className="m-sub">+12 bulan ini</span>
+              <div className="m-val">{loading ? '...' : totalPatients}</div>
+              <span className="m-sub">Tercatat di database</span>
             </div>
+
             <div className="m-card m-red">
               <span className="m-label">Jatuh Tempo</span>
-              <div className="m-val">5</div>
-              <span className="m-sub">Hari ini</span>
+              <div className="m-val">{loading ? '...' : dueReminders}</div>
+              <span className="m-sub">Vaksinasi mendesak</span>
             </div>
+
             <div className="m-card m-green chart-col">
-              <span className="m-label">Kunjungan Bulanan</span>
+              <span className="m-label">Kunjungan (7 Hari Terakhir)</span>
               <div className="mini-chart">
-                {[20, 35, 50, 40, 70, 45, 60].map((h, i) => (
+                {chartHeights.map((h, i) => (
                   <div key={i} className="chart-item">
-                    <div className="bar" style={{ height: `${h}%` }}></div>
-                    <span className="label">{['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][i]}</span>
+                    <div 
+                      className="bar" 
+                      style={{ height: `${loading ? 10 : h}%`, transition: 'height 1s ease' }}
+                    ></div>
+                    <span className="label">{chartLabels[i]}</span>
                   </div>
                 ))}
               </div>
@@ -63,131 +167,120 @@ export default function AdminBeranda() {
           </div>
 
           <Link href="/admin/rekam-medis/tambah" className="banner-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <span>Input Rekam Medis</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>Input Rekam Medis & Potong Stok</span>
           </Link>
 
-          <div className="data-card">
-            <div className="card-inner">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID Pasien</th>
-                    <th>Nama Pemilik</th>
-                    <th>Nama Hewan</th>
-                    <th>Jenis Tindakan</th>
-                    <th>Status</th>
-                    <th className="text-right">Aksi Cepat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPatients.map((p) => (
-                    <tr key={p.id}>
-                      <td className="fw-bold">{p.id}</td>
-                      <td>{p.owner}</td>
-                      <td>{p.pet}</td>
-                      <td>{p.treatment}</td>
-                      <td><span className={`badge ${p.statusClass}`}>{p.status}</span></td>
-                      <td className="text-right">
-                        <div className="action-row">
-                          <button className="a-btn a-wa"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></button>
-                          <button className="a-btn a-edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                        </div>
-                      </td>
+          <div className="dashboard-flex">
+            <div className="data-card">
+              <div className="card-header-dashboard">
+                <h3>Pasien Baru Terdaftar</h3>
+                <Link href="/admin/pasien" className="view-all">Lihat Semua</Link>
+              </div>
+              <div className="card-inner">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID Pasien</th>
+                      <th>Pemilik</th>
+                      <th>Nama Hewan</th>
+                      <th>Status</th>
+                      <th className="text-right">Aksi</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>Menyinkronkan data...</td></tr>
+                    ) : patients.length === 0 ? (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>Belum ada data pasien.</td></tr>
+                    ) : (
+                      patients.map((p, index) => (
+                        <tr key={index}>
+                          <td className="fw-bold">{p.id}</td>
+                          <td>{p.owner}</td>
+                          <td>{p.pet} <small style={{color:'#a19db5'}}>({p.species})</small></td>
+                          <td><span className={`badge ${p.statusClass}`}>{p.status}</span></td>
+                          <td className="text-right">
+                            <Link href={`/admin/rekam-medis?id=${p.realId}`} className="a-btn">
+                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                 <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                               </svg>
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
 
-          <div className="ai-card">
-            <div className="ai-head">
-              <div className="ai-title">Predictive Reminder AI</div>
-              <div className="live-tag">Live</div>
+            <div className="ai-card">
+              <div className="ai-head">
+                <div className="ai-title">Vaksinasi Mendatang</div>
+                <div className="live-tag">AI Powered</div>
+              </div>
+              <div className="reminder-list">
+                {liveReminders.length === 0 ? (
+                  <p style={{fontSize:'12px', color:'#a19db5', textAlign:'center', padding:'20px'}}>Tidak ada jadwal dalam waktu dekat.</p>
+                ) : (
+                  liveReminders.map((r, i) => (
+                    <div key={i} className="r-item">
+                      <div className="dot" style={{ background: r.color }}></div>
+                      <div className="info">
+                        <div className="name">{r.name}</div>
+                        <div className="proc">{r.vaccine}</div>
+                      </div>
+                      <div className="days" style={{ color: r.color }}>{r.dueText}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <Link href="/admin/reminder" className="ai-btn-primary" style={{textDecoration:'none'}}>
+                <span>Buka Reminder Message</span>
+              </Link>
             </div>
-            <div className="reminder-list">
-              {[
-                { n: 'Luna', t: 'Kucing', p: 'Vaksin Rabies', d: '2 hari', c: '#ff4757' },
-                { n: 'Coki', t: 'Anjing', p: 'DHPPi Booster', d: '6 hari', c: '#ffa502' },
-                { n: 'Max', t: 'Anjing', p: 'Leptospira', d: '12 hari', c: '#ff9f43' },
-                { n: 'Buddy', t: 'Anjing', p: 'Bordetella', d: '20 hari', c: '#2ed573' },
-                { n: 'Mochi', t: 'Kucing', p: 'FVRCP', d: '3 bln', c: '#1dd1a1' }
-              ].map((r, i) => (
-                <div key={i} className="r-item">
-                  <div className="dot" style={{ background: r.c }}></div>
-                  <div className="info">
-                    <div className="name">{r.n} — {r.t}</div>
-                    <div className="proc">{r.p}</div>
-                  </div>
-                  <div className="days" style={{ color: r.c }}>{r.d}</div>
-                </div>
-              ))}
-            </div>
-            <button className="ai-btn-primary">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              <span>Kirim Semua Reminder</span>
-            </button>
           </div>
         </div>
       </main>
 
       <style jsx global>{`
-        .admin-body { display: flex; min-height: 100vh; background: #fdfbff; }
-        .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }
-        .scroll-area { padding: 32px; overflow-y: auto; }
-
-        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px; }
-        .m-card { background: #fff; padding: 24px; border-radius: 20px; border: 1.5px solid #f0f0f0; }
-        .m-purple { border-color: #8e52fc; }
-        .m-red { border-color: #ff4757; }
-        .m-green { border-color: #2ed573; }
-        .chart-col { grid-column: span 2; display: flex; flex-direction: column; gap: 12px; }
-        
-        .m-label { font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; letter-spacing: 0.5px; }
-        .m-val { font-size: 32px; font-weight: 900; color: #1a1a1a; margin-top: 4px; }
-        .m-sub { font-size: 11.5px; color: #7a7a7a; font-weight: 600; }
-
-        .mini-chart { display: flex; align-items: flex-end; gap: 12px; height: 60px; margin-top: 4px; }
-        .chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-        .bar { width: 100%; border-radius: 10px 10px 0 0; background: linear-gradient(0deg, #8e52fc 0%, #d463f2 100%); min-height: 4px; }
+        .admin-body { display: flex; min-height: 100vh; background: #f8f9fd; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .scroll-area { padding: 32px; overflow-y: auto; flex: 1; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
+        .m-card { background: #fff; padding: 28px; border-radius: 24px; border: 1px solid #eef0f7; box-shadow: 0 10px 30px rgba(0,0,0,0.02); }
+        .m-purple { border-top: 4px solid #8e52fc; }
+        .m-red { border-top: 4px solid #ff4757; }
+        .chart-col { grid-column: span 2; }
+        .m-label { font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; letter-spacing: 1px; }
+        .m-val { font-size: 36px; font-weight: 900; color: #1a1a1a; margin: 8px 0; }
+        .mini-chart { display: flex; align-items: flex-end; gap: 14px; height: 80px; margin-top: 10px; }
+        .chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .bar { width: 100%; border-radius: 6px; background: linear-gradient(180deg, #8e52fc 0%, #d463f2 100%); min-height: 4px; }
         .label { font-size: 10px; font-weight: 700; color: #a19db5; }
-
-        .banner-btn { width: 100%; background: linear-gradient(135deg, #8e52fc 0%, #c084fc 100%); padding: 14px 20px; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 800; margin-bottom: 24px; box-shadow: 0 8px 24px rgba(142, 82, 252, 0.2); transition: all 0.25s; }
-        .banner-btn:hover { background: linear-gradient(135deg, #7a3eeb 0%, #a86df0 100%); transform: translateY(-2px); box-shadow: 0 12px 28px rgba(142, 82, 252, 0.3); }
-
-        .data-card { background: #fff; border-radius: 24px; border: 1.5px solid #f0f0f0; overflow: hidden; margin-bottom: 24px; }
+        .banner-btn { width: 100%; background: linear-gradient(135deg, #8e52fc 0%, #6c31e0 100%); padding: 18px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 800; margin-bottom: 32px; }
+        .dashboard-flex { display: grid; grid-template-columns: 1fr 340px; gap: 32px; }
+        .data-card { background: #fff; border-radius: 28px; border: 1px solid #eef0f7; overflow: hidden; }
+        .card-header-dashboard { padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f8f9fb; }
+        .view-all { font-size: 13px; font-weight: 700; color: #8e52fc; text-decoration: none; }
         table { width: 100%; border-collapse: collapse; }
-        thead th { padding: 18px 24px; text-align: left; font-size: 11.5px; font-weight: 800; color: #a19db5; text-transform: uppercase; border-bottom: 1.5px solid #f9f7ff; }
-        tbody td { padding: 18px 24px; font-size: 14.5px; color: #1a1a1a; border-bottom: 1px solid #f9f7ff; }
+        thead th { padding: 16px 32px; text-align: left; font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; background: #fdfbff; }
+        tbody td { padding: 18px 32px; font-size: 14px; color: #1a1a1a; border-bottom: 1px solid #f9f7ff; }
         .fw-bold { font-weight: 700; color: #8e52fc; }
-        
-        .badge { padding: 6px 14px; border-radius: 12px; font-size: 11.5px; font-weight: 800; }
-        .s-wait { background: #fff9e6; color: #ffa502; }
-        .s-done { background: #f0fff4; color: #2ed573; }
-        
-        .action-row { display: flex; gap: 8px; justify-content: flex-end; }
-        .a-btn { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; transition: all 0.2s; }
-        .a-wa { background: #f0fff4; color: #2ed573; }
-        .a-wa:hover { background: #2ed573; color: #fff; }
-        .a-edit { background: #f4eeff; color: #8e52fc; }
-        .a-edit:hover { background: #8e52fc; color: #fff; }
-
-        .ai-card { background: #fff; border-radius: 24px; border: 1.5px solid #f0f0f0; padding: 24px; }
-        .ai-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-        .ai-title { font-size: 15px; font-weight: 800; color: #1a1a1a; }
-        .live-tag { padding: 4px 10px; background: #fff5f5; color: #ff9f43; border-radius: 10px; font-size: 10px; font-weight: 900; text-transform: uppercase; }
-        
-        .reminder-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 24px; }
-        .r-item { display: flex; align-items: center; gap: 16px; padding: 14px 4px; border-bottom: 1px solid #f9f7ff; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 4px rgba(0,0,0,0.03); }
+        .badge { padding: 6px 12px; border-radius: 10px; font-size: 11px; font-weight: 800; background: #f0fff4; color: #2ed573; }
+        .a-btn { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #f4eeff; color: #8e52fc; }
+        .ai-card { background: #fff; border-radius: 28px; border: 1px solid #eef0f7; padding: 28px; }
+        .ai-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+        .live-tag { padding: 4px 12px; background: #f4eeff; color: #8e52fc; border-radius: 10px; font-size: 10px; font-weight: 900; }
+        .reminder-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+        .r-item { display: flex; align-items: center; gap: 16px; padding: 14px; background: #f8f9fd; border-radius: 16px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
         .info { flex: 1; }
-        .name { font-size: 14px; font-weight: 700; color: #1a1a1a; }
-        .proc { font-size: 12px; color: #a19db5; font-weight: 600; margin-top: 1px; }
-        .days { font-size: 12.5px; font-weight: 800; }
-
-        .ai-btn-primary { width: 100%; height: 56px; background: #8e52fc; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #fff; border: none; font-size: 15px; font-weight: 800; cursor: pointer; transition: all 0.25s; box-shadow: 0 10px 30px rgba(142, 82, 252, 0.2); }
-        .ai-btn-primary:hover { background: #7a3eeb; transform: translateY(-2px); box-shadow: 0 14px 40px rgba(142, 82, 252, 0.3); }
+        .days { font-size: 12px; font-weight: 800; }
+        .ai-btn-primary { width: 100%; height: 50px; background: #1a1a1a; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 800; }
         .text-right { text-align: right; }
       `}</style>
     </div>

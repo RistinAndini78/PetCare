@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopbar from '@/components/AdminTopbar';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client'; // Import Supabase Client
 
 const vaccineTypes = [
   'Rabies', 'Parvovirus', 'Distemper', 'Bordetella', 'Leptospira',
@@ -33,7 +34,8 @@ const S: Record<string, React.CSSProperties> = {
   select: { width: '100%', padding: '13px 16px', background: '#f9f7ff', border: '1.5px solid #ece4ff', borderRadius: '13px', fontSize: '14px', color: '#1a1a1a', outline: 'none', boxSizing: 'border-box' as const, fontFamily: 'inherit', appearance: 'none' as const },
   row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' },
   divider: { height: '1px', background: '#f7f3ff', margin: '20px -28px', width: 'calc(100% + 56px)' },
-  submitBtn: { width: '100%', padding: '15px', background: 'linear-gradient(135deg, #8e52fc, #d463f2)', color: '#fff', border: 'none', borderRadius: '14px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 6px 20px rgba(142,82,252,0.25)', letterSpacing: '0.3px' },
+  submitBtn: { width: '100%', padding: '15px', background: 'linear-gradient(135deg, #8e52fc, #d463f2)', color: '#fff', border: 'none', borderRadius: '14px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 6px 20px rgba(142,82,252,0.25)', letterSpacing: '0.3px', transition: 'all 0.3s' },
+  submitBtnDisabled: { opacity: 0.7, cursor: 'not-allowed' },
   cancelBtn: { width: '100%', padding: '15px', background: '#fff', color: '#8a80a0', border: '1.5px solid #ece4ff', borderRadius: '14px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', marginTop: '12px' },
   summaryRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #f7f3ff' },
   summaryLabel: { fontSize: '13px', color: '#8a80a0', fontWeight: 600 },
@@ -44,6 +46,9 @@ const S: Record<string, React.CSSProperties> = {
 
 export default function TambahStokVaksin() {
   const router = useRouter();
+  const supabase = createClient();
+  const [isSubmitting, setIsSubmitting] = useState(false); // State untuk loading button
+
   const [form, setForm] = useState({
     namaVaksin: '',
     tipeVaksin: '',
@@ -60,13 +65,42 @@ export default function TambahStokVaksin() {
 
   const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    // 1. Validasi Input Dasar
     if (!form.namaVaksin || !form.jumlah || !form.kadaluarsa) {
       alert('Mohon isi Nama Vaksin, Jumlah Stok, dan Tanggal Kadaluarsa!');
       return;
     }
-    alert(`Stok ${form.namaVaksin} (${form.jumlah} ${form.satuan}) berhasil ditambahkan!`);
-    router.push('/admin/vaksin');
+
+    setIsSubmitting(true);
+
+    // 2. Insert Data ke Tabel Supabase
+    // Menyesuaikan key `form` dengan nama kolom di database yang sudah kita sepakati
+    const { error } = await supabase
+      .from('vaksin')
+      .insert([
+        {
+          nama_produk: form.namaVaksin,
+          kategori_hewan: form.forHewan || '-',
+          stok_sekarang: parseInt(form.jumlah),
+          stok_minimal: form.stokMinimal ? parseInt(form.stokMinimal) : 0,
+          harga: form.harga ? parseInt(form.harga) : 0,
+          tanggal_kadaluarsa: form.kadaluarsa
+        }
+      ]);
+
+    setIsSubmitting(false);
+
+    // 3. Handle Respons dari Database
+    if (error) {
+      console.error('Error insert data:', error);
+      alert(`Gagal menyimpan data: ${error.message}`);
+    } else {
+      alert(`Stok ${form.namaVaksin} berhasil ditambahkan!`);
+      // Pindah ke halaman vaksin dan trigger Next.js untuk memuat data baru
+      router.push('/admin/vaksin');
+      router.refresh(); 
+    }
   };
 
   return (
@@ -137,11 +171,11 @@ export default function TambahStokVaksin() {
                 <div style={{ ...S.formGroup, ...S.row2 }}>
                   <div>
                     <label style={S.label}>Stok Minimal</label>
-                    <input style={S.input} type="number" placeholder="cth: 10" value={form.stokMinimal} onChange={e => set('stokMinimal', e.target.value)} min="1" />
+                    <input style={S.input} type="number" placeholder="cth: 10" value={form.stokMinimal} onChange={e => set('stokMinimal', e.target.value)} min="0" />
                   </div>
                   <div>
                     <label style={S.label}>Harga Satuan (Rp)</label>
-                    <input style={S.input} type="number" placeholder="cth: 150000" value={form.harga} onChange={e => set('harga', e.target.value)} />
+                    <input style={S.input} type="number" placeholder="cth: 150000" value={form.harga} onChange={e => set('harga', e.target.value)} min="0" />
                   </div>
                 </div>
 
@@ -203,10 +237,18 @@ export default function TambahStokVaksin() {
                 </div>
               </div>
 
-              <button style={S.submitBtn} onClick={handleSubmit}>
-                Simpan Stok Vaksin
+              <button 
+                style={{ ...S.submitBtn, ...(isSubmitting ? S.submitBtnDisabled : {}) }} 
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Menyimpan...' : 'Simpan Stok Vaksin'}
               </button>
-              <button style={S.cancelBtn} onClick={() => router.push('/admin/vaksin')}>
+              <button 
+                style={S.cancelBtn} 
+                onClick={() => router.push('/admin/vaksin')}
+                disabled={isSubmitting}
+              >
                 Batal
               </button>
             </div>

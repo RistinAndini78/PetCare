@@ -4,24 +4,30 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AdminSidebar from '@/components/AdminSidebar';
-import { supabase } from '@/utils/supabase/client';
+import { createClient } from '@/utils/supabase/client';
 
 export default function TambahEntriMedis() {
+  const supabase = createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [patients, setPatients] = useState<any[]>([]);
   
+  // State untuk integrasi stok vaksin
+  const [availableVaccines, setAvailableVaccines] = useState<any[]>([]);
+  const [selectedVaccineId, setSelectedVaccineId] = useState('');
+
   const [formData, setFormData] = useState({
     patientId: '',
     treatmentDate: new Date().toISOString().split('T')[0],
     doctorName: 'drh. Andi Pratama',
-    treatmentType: 'vaksin',
+    treatmentType: 'pemeriksaan',
     weightKg: '',
     diagnosisNotes: ''
   });
 
   useEffect(() => {
     fetchPatients();
+    fetchAvailableVaccines();
   }, []);
 
   const fetchPatients = async () => {
@@ -32,12 +38,29 @@ export default function TambahEntriMedis() {
     setPatients(data || []);
   };
 
+  const fetchAvailableVaccines = async () => {
+    const { data } = await supabase
+      .from('vaksin')
+      .select('id, nama_produk, stok_sekarang')
+      .gt('stok_sekarang', 0)
+      .order('nama_produk');
+    setAvailableVaccines(data || []);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validasi
+    if (!formData.patientId) return alert("Silakan pilih pasien terlebih dahulu!");
+    if (formData.treatmentType === 'vaksin' && !selectedVaccineId) {
+      return alert("Silakan pilih produk vaksin yang tersedia!");
+    }
+
     setLoading(true);
 
     try {
-      const { error } = await supabase
+      // 1. SIMPAN REKAM MEDIS
+      const { error: recordError } = await supabase
         .from('medical_records')
         .insert([{
           patient_id: formData.patientId,
@@ -48,11 +71,49 @@ export default function TambahEntriMedis() {
           diagnosis_notes: formData.diagnosisNotes
         }]);
 
-      if (error) throw error;
+      if (recordError) throw recordError;
 
+      // 2. LOGIKA KHUSUS VAKSIN (Sinkronisasi Stok & Jadwal AI)
+      if (formData.treatmentType === 'vaksin' && selectedVaccineId) {
+        // Ambil data stok terbaru untuk menghindari selisih data
+        const { data: vData } = await supabase
+          .from('vaksin')
+          .select('stok_sekarang, nama_produk')
+          .eq('id', selectedVaccineId)
+          .single();
+
+        if (vData) {
+          // A. Kurangi Stok
+          await supabase
+            .from('vaksin')
+            .update({ stok_sekarang: vData.stok_sekarang - 1 })
+            .eq('id', selectedVaccineId);
+
+          // B. Buat Jadwal Vaksin Selanjutnya (Memicu Reminder AI)
+          // Menghitung H+1 Tahun secara otomatis
+          const nextDate = new Date(formData.treatmentDate);
+          nextDate.setFullYear(nextDate.getFullYear() + 1);
+
+          const { error: scheduleError } = await supabase
+            .from('vaccination_schedules')
+            .insert([{
+              patient_id: formData.patientId,
+              vaccine_name: vData.nama_produk,
+              next_vaccine_date: nextDate.toISOString().split('T')[0],
+              status: 'scheduled'
+            }]);
+
+          if (scheduleError) console.error("Gagal menjadwalkan:", scheduleError);
+        }
+      }
+
+      alert("Data berhasil disimpan! Stok telah terpotong & jadwal pengingat telah dibuat.");
       router.push('/admin/rekam-medis');
+      router.refresh();
+
     } catch (err: any) {
-      alert(err.message || 'Terjadi kesalahan saat menyimpan data');
+      console.error("Error:", err);
+      alert(err.message || 'Terjadi kesalahan sistem');
     } finally {
       setLoading(false);
     }
@@ -62,178 +123,119 @@ export default function TambahEntriMedis() {
     <div className="admin-body">
       <AdminSidebar active="rekam-medis" />
       <main className="main-content">
-        <div className="topbar">
-          <Link href="/admin/beranda" className="back-btn">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          </Link>
-          <div className="t-right">
-            <div className="t-title">Tambah Entri Medis</div>
-            <div className="t-sub">Catat riwayat tindakan atau vaksinasi pasien</div>
-          </div>
+        <div className="topbar-plain">
+          <Link href="/admin/rekam-medis" className="back-link">← Kembali ke Riwayat</Link>
+          <h1>Tambah Entri Medis Baru</h1>
         </div>
 
-        <form className="scroll-area" onSubmit={handleSubmit}>
+        <form className="form-container" onSubmit={handleSubmit}>
           <div className="form-card">
-            <div className="card-header">
-              <div className="header-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            <div className="form-section">
+              <label>Identitas Pasien</label>
+              <select
+                required
+                className="f-input"
+                value={formData.patientId}
+                onChange={e => setFormData({ ...formData, patientId: e.target.value })}
+              >
+                <option value="">-- Cari Pasien --</option>
+                {patients.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} - {p.owners?.full_name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-grid">
+              <div className="form-section">
+                <label>Tanggal Tindakan</label>
+                <input type="date" className="f-input" value={formData.treatmentDate} onChange={e => setFormData({ ...formData, treatmentDate: e.target.value })} />
               </div>
-              <div className="header-text">
-                <h2>Formulir Rekam Medis Baru</h2>
-                <p>Data tindakan medis akan secara otomatis tesinkronasi ke aplikasi <b>Portal Pemilik</b>.</p>
+
+              <div className="form-section">
+                <label>Jenis Tindakan</label>
+                <select className="f-input" value={formData.treatmentType} onChange={e => {
+                  setFormData({ ...formData, treatmentType: e.target.value });
+                  if (e.target.value !== 'vaksin') setSelectedVaccineId('');
+                }}>
+                  <option value="pemeriksaan">Pemeriksaan Rutin</option>
+                  <option value="vaksin">Vaksinasi</option>
+                  <option value="operasi">Operasi/Bedah</option>
+                  <option value="grooming">Medical Grooming</option>
+                </select>
               </div>
             </div>
 
-            <div className="card-body">
-              <div className="section-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 10h.01M16 10h.01M12 14v.01M10 16a2 2 0 0 0 4 0"/></svg>
-                Pilih Pasien Terdaftar
+            {formData.treatmentType === 'vaksin' && (
+              <div className="form-section highlight-box">
+                <label>Pilih Produk Vaksin (Update Stok Otomatis)</label>
+                <select
+                  required
+                  className="f-input"
+                  value={selectedVaccineId}
+                  onChange={e => {
+                    const vId = e.target.value;
+                    setSelectedVaccineId(vId);
+                    const vData = availableVaccines.find(x => x.id === vId);
+                    if (vData) setFormData({ ...formData, diagnosisNotes: `Pemberian Vaksin ${vData.nama_produk}` });
+                  }}
+                >
+                  <option value="">-- Pilih Stok Tersedia --</option>
+                  {availableVaccines.map(v => (
+                    <option key={v.id} value={v.id}>{v.nama_produk} (Sisa: {v.stok_sekarang})</option>
+                  ))}
+                </select>
               </div>
-              
-              <div className="grid-1">
-                <div className="form-group">
-                  <label>NAMA HEWAN - PEMILIK</label>
-                  <div className="input-wrapper">
-                    <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <select 
-                      className="f-input with-icon f-select"
-                      required
-                      value={formData.patientId}
-                      onChange={e => setFormData({...formData, patientId: e.target.value})}
-                    >
-                      <option value="">Cari dan pilih pasien...</option>
-                      {patients.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} - {p.owners?.full_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
+            )}
 
-              <div className="section-title" style={{ marginTop: '40px' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                Detail Tindakan Medis
-              </div>
+            <div className="form-section">
+              <label>Berat Badan (kg)</label>
+              <input type="number" step="0.1" className="f-input" placeholder="0.0" value={formData.weightKg} onChange={e => setFormData({ ...formData, weightKg: e.target.value })} />
+            </div>
 
-              <div className="grid-2">
-                <div className="form-group">
-                  <label>TANGGAL TINDAKAN</label>
-                  <div className="input-wrapper">
-                    <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    <input 
-                      type="date" 
-                      className="f-input with-icon" 
-                      required
-                      value={formData.treatmentDate}
-                      onChange={e => setFormData({...formData, treatmentDate: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>DOKTER PENANGGUNG JAWAB</label>
-                  <div className="input-wrapper">
-                    <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    <input type="text" value={formData.doctorName} className="f-input with-icon" disabled style={{ background: '#f8f6fb' }} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>JENIS TINDAKAN</label>
-                  <select 
-                    className="f-input f-select"
-                    value={formData.treatmentType}
-                    onChange={e => setFormData({...formData, treatmentType: e.target.value})}
-                  >
-                    <option value="vaksin">Vaksin / Imunisasi</option>
-                    <option value="pemeriksaan">Pemeriksaan Rutin / Rawat Jalan</option>
-                    <option value="operasi">Tindakan Bedah / Operasi</option>
-                    <option value="grooming">Medical Grooming</option>
-                    <option value="lainnya">Lainnya</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>BERAT BADAN (KG)</label>
-                  <input 
-                    type="number" 
-                    placeholder="Contoh: 3.5" 
-                    step="0.1" 
-                    className="f-input" 
-                    value={formData.weightKg}
-                    onChange={e => setFormData({...formData, weightKg: e.target.value})}
-                  />
-                </div>
-                <div className="form-group full-width">
-                  <label>HASIL DIAGNOSA & PENGOBATAN</label>
-                  <textarea 
-                    placeholder="Tuliskan keluhan, hasil pemeriksaan, atau rincian obat yang diberikan..." 
-                    rows={4} 
-                    className="f-textarea"
-                    value={formData.diagnosisNotes}
-                    onChange={e => setFormData({...formData, diagnosisNotes: e.target.value})}
-                  ></textarea>
-                </div>
-              </div>
+            <div className="form-section">
+              <label>Diagnosa & Hasil Pemeriksaan</label>
+              <textarea
+                rows={4}
+                className="f-textarea"
+                placeholder="Tuliskan catatan medis secara detail..."
+                value={formData.diagnosisNotes}
+                onChange={e => setFormData({ ...formData, diagnosisNotes: e.target.value })}
+              ></textarea>
+            </div>
 
-              <div className="bottom-actions">
-                <Link href="/admin/beranda" className="btn-cancel">Batal</Link>
-                <button type="submit" className="btn-save" disabled={loading}>
-                  <span>{loading ? 'Menyimpan...' : 'Simpan Entri Medis'}</span>
-                  {!loading && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>}
-                </button>
-              </div>
+            <div className="form-actions">
+              <button type="button" onClick={() => router.back()} className="btn-secondary">Batal</button>
+              <button type="submit" disabled={loading} className="btn-primary">
+                {loading ? 'Menyimpan...' : 'Simpan & Update Sistem'}
+              </button>
             </div>
           </div>
         </form>
       </main>
 
-      <style jsx global>{`
-        .admin-body { display: flex; min-height: 100vh; background: #fdfbff; }
-        .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }
-        .scroll-area { padding: 40px; display: flex; justify-content: center; }
-
-        .topbar { padding: 24px 40px 0; display: flex; align-items: flex-start; justify-content: space-between; }
-        .back-btn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: #a19db5; text-decoration: none; margin-left: -12px; border-radius: 12px; transition: all 0.2s; }
-        .back-btn:hover { background: #fff; color: #8e52fc; box-shadow: 0 4px 12px rgba(142, 82, 252, 0.05); }
+      <style jsx>{`
+        .admin-body { display: flex; background: #f8f9fd; min-height: 100vh; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .main-content { margin-left: 220px; flex: 1; padding: 40px; }
+        .topbar-plain { margin-bottom: 30px; }
+        .back-link { color: #8e52fc; text-decoration: none; font-weight: 700; font-size: 14px; }
+        h1 { font-size: 24px; font-weight: 900; color: #1a1a1a; margin-top: 10px; }
         
-        .t-right { text-align: right; }
-        .t-title { font-size: 24px; font-weight: 900; color: #1a1a1a; letter-spacing: -0.5px; }
-        .t-sub { font-size: 13.5px; color: #a19db5; font-weight: 600; margin-top: 4px; }
-
-        .form-card { background: #fff; width: 100%; max-width: 860px; border-radius: 24px; border: 1.5px solid #ece4ff; box-shadow: 0 20px 40px rgba(142, 82, 252, 0.04); overflow: hidden; margin-bottom: 24px; }
+        .form-container { max-width: 800px; }
+        .form-card { background: #fff; padding: 40px; border-radius: 24px; border: 1px solid #eef0f7; box-shadow: 0 10px 30px rgba(0,0,0,0.02); }
         
-        .card-header { padding: 36px 40px; background: linear-gradient(135deg, #e056fd 0%, #be2edd 100%); color: #fff; display: flex; align-items: center; gap: 20px; }
-        .header-icon { width: 56px; height: 56px; border-radius: 16px; background: rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
-        .header-text h2 { font-size: 22px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.3px; }
-        .header-text p { font-size: 14px; opacity: 0.9; font-weight: 500; margin: 0; line-height: 1.5; }
+        .form-section { margin-bottom: 24px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .highlight-box { background: #f4eeff; padding: 24px; border-radius: 20px; border: 2px dashed #8e52fc; }
         
-        .card-body { padding: 48px 40px; }
-
-        .section-title { font-size: 15px; font-weight: 800; color: #1a1a1a; margin-bottom: 28px; display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #f9f7ff; padding-bottom: 16px; }
-        .section-title svg { color: #e056fd; }
+        label { display: block; font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 1px; }
+        .f-input, .f-textarea { width: 100%; padding: 14px 18px; border: 1.5px solid #eef0f7; border-radius: 14px; font-size: 14px; outline: none; transition: 0.2s; background: #fdfbff; }
+        .f-input:focus { border-color: #8e52fc; background: #fff; }
         
-        .grid-1 { display: grid; grid-template-columns: 1fr; gap: 24px; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 32px; }
-        .form-group label { display: block; font-size: 11px; font-weight: 800; color: #666; margin-bottom: 10px; letter-spacing: 0.8px; text-transform: uppercase; }
-        .full-width { grid-column: span 2; }
-        
-        .input-wrapper { position: relative; display: flex; align-items: center; }
-        .input-icon { position: absolute; left: 16px; color: #a19db5; transition: all 0.2s; pointer-events: none; }
-        
-        .f-input, .f-textarea { width: 100%; border: 1.5px solid #ece4ff; border-radius: 14px; font-size: 14.5px; color: #1a1a1a; transition: all 0.25s; font-weight: 500; font-family: inherit; background: #fdfbff; }
-        .f-input { padding: 16px 20px; height: 54px; }
-        .f-input.with-icon { padding-left: 48px; }
-        .f-textarea { padding: 16px 20px; resize: none; line-height: 1.5; }
-        
-        .f-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a19db5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 20px center; padding-right: 48px; cursor: pointer; }
-
-        .f-input:focus, .f-textarea:focus { outline: none; border-color: #be2edd; background: #fff; box-shadow: 0 4px 12px rgba(190, 46, 221, 0.08); }
-        .input-wrapper:focus-within .input-icon { color: #be2edd; }
-        
-        .bottom-actions { display: flex; gap: 20px; margin-top: 56px; align-items: center; justify-content: flex-end; }
-        .btn-cancel { padding: 16px 32px; color: #a19db5; font-size: 14.5px; font-weight: 700; cursor: pointer; transition: all 0.2s; text-decoration: none; border-radius: 14px; }
-        .btn-cancel:hover { background: #f9f7ff; color: #1a1a1a; }
-        
-        .btn-save { padding: 16px 36px; background: linear-gradient(135deg, #e056fd 0%, #be2edd 100%); color: #fff; border: none; border-radius: 14px; font-size: 15px; font-weight: 800; cursor: pointer; transition: all 0.25s; display: flex; align-items: center; gap: 12px; }
-        .btn-save:hover { background: #be2edd; transform: translateY(-2px); box-shadow: 0 10px 24px rgba(190, 46, 221, 0.25); }
+        .form-actions { display: flex; justify-content: flex-end; gap: 15px; margin-top: 40px; }
+        .btn-primary { background: linear-gradient(135deg, #8e52fc 0%, #6c31e0 100%); color: #fff; border: none; padding: 14px 30px; border-radius: 16px; font-weight: 800; cursor: pointer; transition: 0.3s; box-shadow: 0 8px 15px rgba(142, 82, 252, 0.2); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 20px rgba(142, 82, 252, 0.3); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: #fff; border: 1.5px solid #eef0f7; padding: 14px 30px; border-radius: 16px; font-weight: 700; color: #a19db5; cursor: pointer; }
       `}</style>
     </div>
   );

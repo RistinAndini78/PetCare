@@ -4,14 +4,15 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AdminSidebar from '@/components/AdminSidebar';
-import { supabase } from '@/utils/supabase/client';
+import { createClient } from '@/utils/supabase/client';
 
 export default function TambahPasien() {
+  const supabase = createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [owners, setOwners] = useState<any[]>([]);
-  const [showNewOwner, setShowNewOwner] = useState(false);
   
+  // 1. Data form disederhanakan, hanya menyimpan ownerId
   const [formData, setFormData] = useState({
     name: '',
     species: '',
@@ -19,10 +20,7 @@ export default function TambahPasien() {
     birthDate: '',
     gender: 'Jantan',
     colorMarks: '',
-    ownerId: '',
-    newOwnerName: '',
-    newOwnerPhone: '',
-    newOwnerAddress: ''
+    ownerId: '' 
   });
 
   useEffect(() => {
@@ -39,21 +37,10 @@ export default function TambahPasien() {
     setLoading(true);
 
     try {
-      let finalOwnerId = formData.ownerId;
+      // 2. Validasi ketat: Wajib memilih pemilik
+      if (!formData.ownerId) throw new Error('Silakan pilih pemilik yang terdaftar terlebih dahulu.');
 
-      if (showNewOwner) {
-        const { data: newOwner, error: ownerError } = await supabase
-          .from('owners')
-          .insert([{ full_name: formData.newOwnerName, phone: formData.newOwnerPhone, address: formData.newOwnerAddress }])
-          .select()
-          .single();
-        
-        if (ownerError) throw ownerError;
-        finalOwnerId = newOwner.id;
-      }
-
-      if (!finalOwnerId) throw new Error('Silakan pilih atau daftarkan pemilik terlebih dahulu');
-
+      // 3. Langsung simpan data pasien
       const { error: patientError } = await supabase
         .from('patients')
         .insert([{
@@ -63,7 +50,7 @@ export default function TambahPasien() {
           birth_date: formData.birthDate || null,
           gender: formData.gender,
           color_marks: formData.colorMarks,
-          owner_id: finalOwnerId
+          owner_id: formData.ownerId
         }]);
 
       if (patientError) throw patientError;
@@ -170,66 +157,24 @@ export default function TambahPasien() {
               <span>Informasi Pemilik</span>
             </div>
             <div className="card-body">
-              <div className="grid-2 align-bottom">
-                <div className="form-group">
-                  <label>Cari & Pilih Pemilik Terdaftar</label>
-                  <select 
-                    className="f-input"
-                    disabled={showNewOwner}
-                    value={formData.ownerId}
-                    onChange={e => setFormData({...formData, ownerId: e.target.value})}
-                    required={!showNewOwner}
-                  >
-                    <option value="">-- Pilih Pemilik --</option>
-                    {owners.map(o => (
-                      <option key={o.id} value={o.id}>{o.full_name} ({o.phone})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="or-txt">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={showNewOwner} onChange={e => setShowNewOwner(e.target.checked)} />
-                    Daftar Pemilik Baru
-                  </label>
-                </div>
+              {/* 4. Bagian checkbox dihapus, select dibuat full-width */}
+              <div className="form-group full-width">
+                <label>Cari & Pilih Pemilik Terdaftar</label>
+                <select 
+                  className="f-input"
+                  value={formData.ownerId}
+                  onChange={e => setFormData({...formData, ownerId: e.target.value})}
+                  required
+                >
+                  <option value="">-- Ketik atau Pilih Pemilik --</option>
+                  {owners.map(o => (
+                    <option key={o.id} value={o.id}>{o.full_name} ({o.phone})</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: '11px', color: '#a19db5', marginTop: '6px', display: 'block' }}>
+                  *Jika pemilik belum terdaftar, silakan tambahkan melalui menu Manajemen Pemilik.
+                </span>
               </div>
-              
-              {showNewOwner && (
-                <div className="grid-2" style={{ marginTop: '24px', padding: '24px', background: '#f9f7ff', borderRadius: '16px' }}>
-                  <div className="form-group">
-                    <label>Nama Pemilik Baru</label>
-                    <input 
-                      type="text" 
-                      placeholder="Nama lengkap pemilik" 
-                      className="f-input" 
-                      required={showNewOwner}
-                      value={formData.newOwnerName}
-                      onChange={e => setFormData({...formData, newOwnerName: e.target.value})}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>No. HP / WhatsApp</label>
-                    <input 
-                      type="text" 
-                      placeholder="08xxxxxxxxxx" 
-                      className="f-input" 
-                      required={showNewOwner}
-                      value={formData.newOwnerPhone}
-                      onChange={e => setFormData({...formData, newOwnerPhone: e.target.value})}
-                    />
-                  </div>
-                  <div className="form-group full-width">
-                    <label>Alamat</label>
-                    <input 
-                      type="text" 
-                      placeholder="Alamat lengkap pemilik" 
-                      className="f-input" 
-                      value={formData.newOwnerAddress}
-                      onChange={e => setFormData({...formData, newOwnerAddress: e.target.value})}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -243,6 +188,7 @@ export default function TambahPasien() {
       </main>
 
       <style jsx global>{`
+        /* --- CSS SAMA PERSIS SEPERTI SEBELUMNYA --- */
         .admin-body { display: flex; min-height: 100vh; background: #fdfbff; }
         .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }
         .scroll-area { padding: 40px; }

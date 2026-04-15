@@ -2,127 +2,160 @@
 
 import { useState, useEffect } from 'react';
 import AdminSidebar from '@/components/AdminSidebar';
+import AdminTopbar from '@/components/AdminTopbar'; // Pastikan import ini ada
 import Link from 'next/link';
-import { supabase } from '@/utils/supabase/client';
+import { createClient } from '@/utils/supabase/client';
 
 export default function ManajemenPasien() {
+  const supabase = createClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    total: 0,
+    late: 0,
+    upcoming: 0,
+    new: 0
+  });
 
   useEffect(() => {
-    fetchPatients();
+    fetchData();
   }, []);
 
-  const fetchPatients = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // 1. Ambil Data Pasien beserta info pemilik
+      const { data: patientsData, error: pError } = await supabase
         .from('patients')
         .select('*, owners(full_name)')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setPatients(data || []);
+      if (pError) throw pError;
+
+      // 2. Ambil Data Jadwal Vaksin (Untuk Menghitung Stats)
+      const { data: scheduleData } = await supabase
+        .from('vaccination_schedules')
+        .select('next_vaccine_date, status');
+
+      const now = new Date();
+      let lateCount = 0;
+      let upcomingCount = 0;
+
+      if (scheduleData) {
+        scheduleData.forEach(s => {
+          const nextDate = new Date(s.next_vaccine_date);
+          if (nextDate < now && s.status === 'scheduled') lateCount++;
+          // H-7 dianggap segera
+          const diffTime = nextDate.getTime() - now.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays <= 7 && diffDays > 0) upcomingCount++;
+        });
+      }
+
+      setPatients(patientsData || []);
+      setStats({
+        total: patientsData?.length || 0,
+        late: lateCount,
+        upcoming: upcomingCount,
+        new: patientsData?.filter(p => {
+          const created = new Date(p.created_at);
+          return created.getMonth() === now.getMonth();
+        }).length || 0
+      });
+
     } catch (err) {
-      console.error('Error fetching patients:', err);
+      console.error('Error fetching data:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const stats = [
-    { label: 'TOTAL PASIEN', value: patients.length, border: '#8e52fc' },
-    { label: 'VAKSIN TERLAMBAT', value: 0, border: '#ff4757' },
-    { label: 'VAKSIN SEGERA', value: 0, border: '#c084fc' },
-    { label: 'KUNJUNGAN BARU', value: patients.length, border: '#1e90ff' },
-  ];
-
-  const filteredPatients = patients.filter(p => 
-    (p.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
-    (p.owners?.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    (p.breed?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  const filteredPatients = patients.filter(p =>
+    (p.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    (p.owners?.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase())
   );
+
+  const metrics = [
+    { label: 'TOTAL PASIEN', value: stats.total, border: '#8e52fc' },
+    { label: 'VAKSIN TERLAMBAT', value: stats.late, border: '#ff4757' },
+    { label: 'VAKSIN SEGERA (H-7)', value: stats.upcoming, border: '#ffa502' },
+    { label: 'PASIEN BULAN INI', value: stats.new, border: '#1e90ff' },
+  ];
 
   return (
     <div className="admin-body">
       <AdminSidebar active="pasien" />
       <main className="main-content">
-        <div className="topbar">
-          <div className="t-left">
-            <h1 className="t-title">Manajemen Pasien</h1>
-            <p className="t-sub">Kelola data hewan dan pemilik</p>
-          </div>
-          <div className="t-right">
-            <div className="search-box">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" placeholder="Cari nama/pemilik..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-            </div>
-          </div>
-        </div>
-        
+        <AdminTopbar title="Manajemen Pasien" subtitle="Pusat kendali data hewan dan riwayat pemilik" />
+
         <div className="scroll-area">
+          {/* Dashboard Mini Metrics */}
           <div className="metrics-grid">
-            {stats.map((s, i) => (
-              <div key={i} className="m-card" style={{ borderTop: `4px solid ${s.border}` }}>
-                <span className="m-label">{s.label}</span>
-                <div className="m-val">{s.value}</div>
+            {metrics.map((m, i) => (
+              <div key={i} className="m-card" style={{ borderTop: `4px solid ${m.border}` }}>
+                <span className="m-label">{m.label}</span>
+                <div className="m-val">{m.value}</div>
               </div>
             ))}
           </div>
 
           <div className="data-card">
             <div className="card-top-flex">
-              <h2 className="title-text">Daftar Pasien<br/>Terdaftar</h2>
-              <Link href="/admin/pasien/tambah" className="add-btn-huge">
-                + Tambah Pasien
-              </Link>
+              <div>
+                <h2 className="title-text">Database Pasien</h2>
+                <p className="sub-text">Total {filteredPatients.length} pasien ditemukan</p>
+              </div>
+              <div className="actions-right">
+                <div className="search-box">
+                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                   <input type="text" placeholder="Cari nama atau pemilik..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                </div>
+                <Link href="/admin/pasien/tambah" className="add-btn">
+                  + Registrasi Pasien
+                </Link>
+              </div>
             </div>
 
             <div className="table-container">
               <table>
                 <thead>
                   <tr>
-                    <th>HEWAN & PEMILIK</th>
+                    <th>PASIEN & PEMILIK</th>
                     <th>JENIS / RAS</th>
-                    <th>STATUS VAKSIN</th>
-                    <th>TERAKHIR</th>
-                    <th className="text-right">AKSI</th>
+                    <th>STATUS KESEHATAN</th>
+                    <th>TGL TERDAFTAR</th>
+                    <th className="text-right">OPSI</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>
-                        Memuat data pasien...
-                      </td>
-                    </tr>
-                  ) : filteredPatients.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>
-                        Belum ada data pasien.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredPatients.map((p) => (
-                      <tr key={p.id}>
-                        <td>
-                          <div className="profile-cell">
-                            <div className="name-box">
-                              <div className="p-name">{p.name}</div>
-                              <div className="o-name">{p.owners?.full_name || 'Tanpa Pemilik'}</div>
-                            </div>
+                    <tr><td colSpan={5} className="loading-cell">Menyinkronkan data...</td></tr>
+                  ) : filteredPatients.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <div className="profile-cell">
+                          <div className="avatar-mini">{p.species?.toLowerCase() === 'kucing' ? '🐱' : '🐶'}</div>
+                          <div className="name-box">
+                            <div className="p-name">{p.name}</div>
+                            <div className="o-name">{p.owners?.full_name}</div>
                           </div>
-                        </td>
-                        <td className="text-val">{p.species} · {p.breed || '---'}</td>
-                        <td><span className={`badge s-green`}>Aman</span></td>
-                        <td className="text-val">{p.created_at ? new Date(p.created_at).toLocaleDateString('id-ID') : '---'}</td>
-                        <td className="text-right">
-                          <button className="d-btn">Detail</button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                        </div>
+                      </td>
+                      <td className="text-val">{p.species} <span className="breed-tag">{p.breed || '---'}</span></td>
+                      <td>
+                        {/* Logika Badge Status Dinamis */}
+                        <span className="badge s-green">Aktif</span>
+                      </td>
+                      <td className="text-val">{new Date(p.created_at).toLocaleDateString('id-ID')}</td>
+                      <td className="text-right">
+                        <Link href={`/admin/rekam-medis?id=${p.id}`} className="d-btn">
+                          Lihat Rekam Medis
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -131,47 +164,48 @@ export default function ManajemenPasien() {
       </main>
 
       <style jsx global>{`
-        .admin-body { display: flex; min-height: 100vh; background: #fdfbff; }
+        .admin-body { display: flex; min-height: 100vh; background: #fdfbff; font-family: 'Plus Jakarta Sans', sans-serif; }
         .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }
-        .scroll-area { padding: 32px; }
+        .scroll-area { padding: 32px; max-width: 1400px; margin: 0 auto; width: 100%; }
 
-        .topbar { height: 80px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1.5px solid #f0f0f0; }
-        .t-title { font-size: 18px; font-weight: 900; color: #1a1a1a; letter-spacing: -0.3px; }
-        .t-sub { font-size: 12px; color: #a19db5; font-weight: 600; margin-top: 2px; }
+        /* Metrics */
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 32px; }
+        .m-card { background: #fff; padding: 24px; border-radius: 20px; border: 1.5px solid #f0f0f0; box-shadow: 0 10px 20px rgba(0,0,0,0.02); }
+        .m-label { font-size: 11px; font-weight: 800; color: #a19db5; letter-spacing: 0.5px; margin-bottom: 8px; display: block; }
+        .m-val { font-size: 32px; font-weight: 900; color: #1a1a1a; }
+
+        /* Table Card */
+        .data-card { background: #fff; border-radius: 30px; border: 1.5px solid #f0f0f0; box-shadow: 0 20px 40px rgba(142, 82, 252, 0.05); overflow: hidden; }
+        .card-top-flex { padding: 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1.5px solid #f9f7ff; }
+        .title-text { font-size: 20px; font-weight: 900; color: #1a1a1a; margin: 0; }
+        .sub-text { font-size: 13px; color: #a19db5; font-weight: 500; margin-top: 4px; }
         
-        .search-box { position: relative; width: 280px; }
+        .actions-right { display: flex; gap: 16px; align-items: center; }
+        .search-box { position: relative; width: 260px; }
         .search-box svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #a19db5; }
-        .search-box input { width: 100%; padding: 12px 16px 12px 42px; background: #fdfbff; border: 1.5px solid #ece4ff; border-radius: 12px; font-size: 13px; outline: none; transition: all 0.2s; font-weight: 600; font-family: inherit; }
+        .search-box input { width: 100%; padding: 12px 16px 12px 42px; background: #f8f9fd; border: 1.5px solid #ece4ff; border-radius: 14px; font-size: 13px; outline: none; transition: 0.2s; }
         .search-box input:focus { border-color: #8e52fc; background: #fff; }
 
-        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 32px; }
-        .m-card { background: #fff; padding: 24px; border-radius: 16px; border: 1.5px solid #f0f0f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
-        .m-label { font-size: 10.5px; font-weight: 800; color: #666; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px; }
-        .m-val { font-size: 32px; font-weight: 900; color: #1a1a1a; letter-spacing: -1px; }
+        .add-btn { background: #8e52fc; color: #fff; padding: 12px 24px; border-radius: 14px; text-decoration: none; font-size: 13px; font-weight: 800; box-shadow: 0 8px 15px rgba(142, 82, 252, 0.25); transition: 0.3s; }
+        .add-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 20px rgba(142, 82, 252, 0.35); }
 
-        .data-card { background: #fff; border-radius: 28px; border: 1.5px solid #f0f0f0; box-shadow: 0 10px 30px rgba(142, 82, 252, 0.05); overflow: hidden; }
-        .card-top-flex { padding: 24px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1.5px solid #f0f0f0; gap: 40px; }
-        .title-text { font-size: 15px; font-weight: 800; color: #1a1a1a; line-height: 1.3; min-width: 150px; }
-        
-        .add-btn-huge { flex: 1; background: #8e52fc; color: #fff; border-radius: 12px; height: 44px; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 13.5px; font-weight: 800; transition: all 0.2s; }
-        .add-btn-huge:hover { background: #7a3eeb; }
-
-        .table-container { width: 100%; }
         table { width: 100%; border-collapse: collapse; }
-        thead th { padding: 16px 32px; text-align: left; font-size: 10.5px; font-weight: 900; color: #666; text-transform: uppercase; background: #fdfbff; border-bottom: 1.5px solid #f0f0f0; letter-spacing: 0.5px; }
-        tbody td { padding: 20px 32px; font-size: 13.5px; color: #1a1a1a; border-bottom: 1px solid #f9f7ff; vertical-align: middle; }
+        thead th { padding: 18px 32px; text-align: left; font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; background: #fdfbff; border-bottom: 1.5px solid #f0f0f0; }
+        tbody td { padding: 20px 32px; border-bottom: 1px solid #f9f7ff; }
 
         .profile-cell { display: flex; align-items: center; gap: 16px; }
-        .p-name { font-weight: 700; color: #1a1a1a; font-size: 14px; margin-bottom: 2px; }
-        .o-name { font-size: 12px; color: #666; font-weight: 600; }
+        .avatar-mini { width: 40px; height: 40px; border-radius: 12px; background: #f8f9fd; display: flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid #ece4ff; }
+        .p-name { font-weight: 800; color: #1a1a1a; font-size: 15px; }
+        .o-name { font-size: 12px; color: #a19db5; font-weight: 600; margin-top: 2px; }
         
-        .badge { padding: 6px 14px; border-radius: 12px; font-size: 11px; font-weight: 800; display: inline-block; }
-        .s-red { background: #fff5f5; color: #ff4757; }
+        .breed-tag { background: #f4eeff; color: #8e52fc; padding: 2px 8px; border-radius: 6px; font-size: 11px; margin-left: 6px; }
+        .badge { padding: 6px 12px; border-radius: 10px; font-size: 11px; font-weight: 800; }
         .s-green { background: #f0fff4; color: #2ed573; }
         
-        .text-val { font-weight: 600; color: #444; font-size: 13px; }
-        .d-btn { background: #fff; border: 1.5px solid #ece4ff; padding: 6px 20px; border-radius: 10px; color: #1a1a1a; font-weight: 700; font-size: 12.5px; cursor: pointer; transition: all 0.2s; }
-        .d-btn:hover { border-color: #8e52fc; color: #8e52fc; }
+        .d-btn { background: #fff; border: 1.5px solid #ece4ff; padding: 8px 16px; border-radius: 10px; color: #8e52fc; font-weight: 700; font-size: 12px; text-decoration: none; transition: 0.2s; }
+        .d-btn:hover { background: #8e52fc; color: #fff; }
+        
+        .loading-cell { text-align: center; padding: 60px; color: #a19db5; font-style: italic; }
         .text-right { text-align: right; }
       `}</style>
     </div>
