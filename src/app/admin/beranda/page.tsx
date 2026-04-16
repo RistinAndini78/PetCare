@@ -220,7 +220,6 @@ export default function AdminBeranda() {
             <div className="ai-card">
               <div className="ai-head">
                 <div className="ai-title">Vaksinasi Mendatang</div>
-                <div className="live-tag">AI Powered</div>
               </div>
               <div className="reminder-list">
                 {liveReminders.length === 0 ? (
