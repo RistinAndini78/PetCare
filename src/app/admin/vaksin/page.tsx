@@ -102,7 +102,7 @@ export default function StokVaksin() {
     <div className="admin-body">
       <AdminSidebar active="vaksin" />
       <main className="main-content">
-        <AdminTopbar title="Stok Vaksin & Obat" subtitle="Inventaris & monitor ketersediaan" onSearch={setSearchQuery} />
+        <AdminTopbar title="Stok Vaksin" subtitle="Inventaris & monitor ketersediaan" onSearch={setSearchQuery} />
 
         <div className="scroll-area">
           {/* Banner Peringatan jika ada stok kritis */}
