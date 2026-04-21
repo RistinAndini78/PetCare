@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client'; // Pastikan path import ini benar
 
 export default function AdminLogin() {
   const [user, setUser] = useState('admin');
@@ -10,9 +11,12 @@ export default function AdminLogin() {
   const [showPass, setShowPass] = useState(false);
   const [activeProfile, setActiveProfile] = useState('Admin');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(''); // State tambahan untuk pesan error dari database
+  
   const router = useRouter();
+  const supabase = createClient(); // Inisialisasi Supabase
 
-  // Konfigurasi Profil: Hanya Admin dan Dokter Hewan
+  // Konfigurasi Profil
   const profiles = [
     { id: 'Admin', name: 'Admin Staff', ava: 'A', bg: 'linear-gradient(135deg, #1e1e2f 0%, #11111d 100%)' },
     { id: 'Dokter', name: 'Dokter Hewan', ava: 'D', bg: 'linear-gradient(135deg, #8e52fc 0%, #6e36d4 100%)' },
@@ -24,32 +28,60 @@ export default function AdminLogin() {
       'Admin': 'admin', 
       'Dokter': 'dokter hewan' 
     };
-    // Memastikan jika mapping tidak ketemu, tetap jadi string kosong (mencegah error undefined)
     setUser(userMap[profile.id] || '');
+    setErrorMsg(''); // Bersihkan error saat ganti profil
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
+    if (!pass) {
+      setErrorMsg('Harap masukkan password!');
+      return;
+    }
+
     setIsLoading(true);
-    setTimeout(() => {
-      // Password statis untuk keperluan progres sistem
-      if (pass === 'admin123') {
-        const profileMap: any = {
-          'Admin': { name: 'Admin Utama', role: 'Staff Administrator' },
-          'Dokter': { name: 'Dokter Hewan', role: 'Dokter Klinik' }
-        };
-        const selected = profileMap[activeProfile] || profileMap['Admin'];
-        localStorage.setItem('petcare_user', JSON.stringify(selected));
-        router.push('/admin/beranda');
-      } else {
-        alert('Kata sandi salah!');
-        setIsLoading(false);
-      }
-    }, 800);
+    setErrorMsg('');
+
+    // Trik Mapping: Ubah username menjadi email agar diterima oleh Supabase
+    const emailMap: any = {
+      'admin': 'admin@klinik.com',
+      'dokter hewan': 'dokter@klinik.com'
+    };
+
+    const loginEmail = emailMap[user];
+
+    try {
+      // 1. Cek kredensial ke database Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: pass,
+      });
+
+      if (error) throw error;
+
+      // 2. Jika berhasil, simpan session berdasarkan profil yang dipilih
+      const sessionData = {
+        id: data.user.id,
+        name: activeProfile === 'Admin' ? 'Admin Utama' : 'Dokter Klinik',
+        role: activeProfile.toLowerCase() // Menyimpan role 'admin' atau 'dokter' untuk dasbor
+      };
+
+      localStorage.setItem('petcare_user', JSON.stringify(sessionData));
+      
+      // 3. Arahkan ke Dasbor Dinamis yang sudah kita buat sebelumnya
+      router.push('/admin/beranda');
+
+    } catch (error: any) {
+      console.error("Login error:", error.message);
+      setErrorMsg('Autentikasi gagal. Pastikan password sesuai dengan database.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="login-page">
       <style jsx>{`
+        /* CSS KAMU TETAP SAMA PERSIS DI SINI */
         .login-page { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f9faff; font-family: 'Inter', sans-serif; }
         .login-card { width: 100%; max-width: 420px; padding: 20px; animation: fadeIn 0.8s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -75,6 +107,7 @@ export default function AdminLogin() {
         .btn-submit:hover { background: #7a3ef2; }
         .footer { text-align: center; margin-top: 24px; font-size: 13px; color: #94a3b8; }
         .link { color: #8e52fc; text-decoration: none; font-weight: 700; }
+        .error-msg { color: #ff4757; font-size: 12px; font-weight: 700; text-align: center; margin-bottom: 16px; background: #ffebee; padding: 8px; border-radius: 8px; }
       `}</style>
 
       <div className="login-card">
@@ -106,10 +139,12 @@ export default function AdminLogin() {
             ))}
           </div>
 
+          {/* Menampilkan pesan error jika password salah */}
+          {errorMsg && <div className="error-msg">{errorMsg}</div>}
+
           <div className="input-group">
             <label className="label">Username</label>
             <div className="input-rel">
-              {/* Perbaikan error: Menambahkan fallback string kosong (|| '') */}
               <input 
                 type="text" 
                 value={user || ''} 
@@ -122,7 +157,6 @@ export default function AdminLogin() {
           <div className="input-group">
             <label className="label">Password</label>
             <div className="input-rel" style={{ position: 'relative' }}>
-              {/* Perbaikan error: Menambahkan fallback string kosong (|| '') */}
               <input 
                 type={showPass ? 'text' : 'password'} 
                 value={pass || ''}

@@ -14,6 +14,30 @@ export default function UserLogin() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const normalizeWaDigits = (value: string) => value.replace(/\D/g, '');
+
+  const toWaVariants = (raw: string) => {
+    // simpan beberapa varian yang mungkin ada di DB: 08..., 62..., +62...
+    const digits = normalizeWaDigits(raw);
+    if (!digits) return [];
+
+    let local = digits;
+    if (local.startsWith('62')) local = '0' + local.substring(2);
+    if (local.startsWith('620')) local = '0' + local.substring(3);
+
+    const internationalDigits = local.startsWith('0') ? '62' + local.substring(1) : digits;
+    const internationalPlus = '+' + internationalDigits;
+
+    return Array.from(new Set([
+      raw.trim(),
+      local,
+      internationalDigits,
+      internationalPlus,
+      '+' + digits,
+      digits,
+    ])).filter(Boolean);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!wa || !pass) return alert('Silakan isi nomor WA dan password!');
@@ -21,34 +45,49 @@ export default function UserLogin() {
     setLoading(true);
 
     try {
-      // 1. Format nomor WA ke standar internasional (+62)
-      // Menghilangkan angka 0 di depan dan menggantinya dengan +62
-      let cleanWa = wa.replace(/\D/g, ''); // Ambil angka saja
-      if (cleanWa.startsWith('0')) {
-        cleanWa = '+62' + cleanWa.substring(1);
-      } else if (!cleanWa.startsWith('62')) {
-        cleanWa = '+62' + cleanWa;
-      } else {
-        cleanWa = '+' + cleanWa;
+      // Login pemilik diselaraskan dengan data dari admin (tabel `owners`)
+      // Password awal yang diset oleh admin adalah 123456
+      if (pass !== '123456') {
+        alert('Nomor WA atau Password salah');
+        return;
       }
 
-      // 2. Logika Login Supabase menggunakan Phone
-      const { data, error } = await supabase.auth.signInWithPassword({
-        phone: cleanWa,
-        password: pass,
-      });
+      const variants = toWaVariants(wa);
+      if (variants.length === 0) {
+        alert('Nomor WhatsApp tidak valid');
+        return;
+      }
+
+      const { data: owners, error } = await supabase
+        .from('owners')
+        .select('id, full_name, phone, email, address, created_at')
+        .in('phone', variants)
+        .limit(5);
 
       if (error) throw error;
 
-      if (data.user) {
-        // Berhasil login, arahkan ke beranda pemilik
-        router.push('/beranda');
-        router.refresh();
+      const inputDigits = normalizeWaDigits(wa);
+      const ownerMatch = (owners || []).find((o: any) => normalizeWaDigits(String(o.phone || '')) === inputDigits)
+        || (owners || [])[0];
+
+      if (!ownerMatch) {
+        alert('Nomor WA tidak terdaftar. Silakan hubungi klinik.');
+        return;
       }
 
+      localStorage.setItem('petcare_owner', JSON.stringify({
+        id: ownerMatch.id,
+        full_name: ownerMatch.full_name,
+        phone: ownerMatch.phone,
+        email: ownerMatch.email,
+      }));
+
+      router.push('/beranda');
+      router.refresh();
+
     } catch (error: any) {
-      console.error("Login Error:", error.message);
-      alert('Gagal Masuk: ' + (error.message === 'Invalid login credentials' ? 'Nomor WA atau Password salah' : error.message));
+      console.error("Login Error:", error?.message || error);
+      alert('Gagal Masuk: ' + (error?.message || 'Terjadi kesalahan'));
     } finally {
       setLoading(false);
     }

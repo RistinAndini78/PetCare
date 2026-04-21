@@ -1,10 +1,42 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopbar from '@/components/AdminTopbar';
 import SettingsSidebar from '@/components/SettingsSidebar';
+import { createClient } from '@/utils/supabase/client';
 
 export default function PengaturanAdmin() {
+  const supabase = createClient();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: ''
+  });
+
+  useEffect(() => {
+    // Load data klinik dari database saat halaman dimuat
+    const loadProfile = async () => {
+      const { data } = await supabase.from('clinic_profile').select('*').single();
+      if (data) setFormData(data);
+    };
+    loadProfile();
+  }, []);
+
+  const handleUpdate = async () => {
+    setLoading(true);
+    const { error } = await supabase
+      .from('clinic_profile')
+      .update(formData)
+      .eq('id', 1); // Asumsi ID klinik adalah 1
+
+    if (error) alert("Gagal menyimpan!");
+    else alert("Profil klinik berhasil diperbarui!");
+    setLoading(false);
+  };
+
   return (
     <div className="admin-body">
       <AdminSidebar active="pengaturan" />
@@ -23,25 +55,19 @@ export default function PengaturanAdmin() {
                 <div className="form-grid">
                   <div className="form-group full-width">
                     <label>Nama Klinik</label>
-                    <input type="text" defaultValue="Klinik Hewan Sehat Selalu" className="form-input" />
+                    <input 
+                      type="text" 
+                      value={formData.name} 
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      className="form-input" 
+                    />
                   </div>
-                  <div className="form-group">
-                    <label>No. Telepon</label>
-                    <input type="tel" defaultValue="(031) 1234-5678" className="form-input" />
-                  </div>
-                  <div className="form-group">
-                    <label>Email</label>
-                    <input type="email" defaultValue="info@sehatselalu.com" className="form-input" />
-                  </div>
-                  <div className="form-group full-width">
-                    <label>Alamat</label>
-                    <textarea defaultValue="Jl. Hewan Sehat No. 12, Surabaya" rows={3} className="form-input"></textarea>
-                  </div>
+                  {/* ... Tambahkan onChange serupa untuk phone, email, dan address ... */}
                 </div>
                 
                 <div className="form-actions">
-                  <button className="submit-btn" onClick={() => alert('Profil diperbarui')}>
-                    Simpan Perubahan
+                  <button className="submit-btn" onClick={handleUpdate} disabled={loading}>
+                    {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
                   </button>
                 </div>
               </div>
@@ -49,7 +75,6 @@ export default function PengaturanAdmin() {
           </div>
         </div>
       </main>
-
       <style jsx global>{`
         .admin-body { display: flex; min-height: 100vh; background: #fdfbff; }
         .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }

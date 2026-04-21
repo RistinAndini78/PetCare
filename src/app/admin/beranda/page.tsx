@@ -1,5 +1,8 @@
 'use client';
 
+// Tambahkan ini agar Next.js selalu mengambil data terbaru (Tidak di-cache)
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopbar from '@/components/AdminTopbar';
@@ -9,8 +12,9 @@ import { createClient } from '@/utils/supabase/client';
 export default function AdminBeranda() {
   const supabase = createClient();
 
-  // State Identitas & Loading
-  const [adminName, setAdminName] = useState('Admin Klinik');
+  // State Identitas, Role, & Loading
+  const [adminName, setAdminName] = useState('Staf Klinik');
+  const [userRole, setUserRole] = useState('admin'); // State baru untuk menyimpan role
   const [loading, setLoading] = useState(true);
 
   // State Statistik Utama
@@ -30,12 +34,14 @@ export default function AdminBeranda() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // 1. Ambil Nama Admin dari Local Storage
+      // 1. Ambil Nama Admin & ROLE dari Local Storage
       const storedUser = localStorage.getItem('petcare_user');
       if (storedUser) {
         try {
           const user = JSON.parse(storedUser);
-          setAdminName(user.name || 'Admin Klinik');
+          setAdminName(user.name || 'Staf Klinik');
+          // Set role berdasarkan data login (default ke admin jika kosong)
+          setUserRole(user.role ? user.role.toLowerCase() : 'admin'); 
         } catch (e) { console.error("Error parse user", e); }
       }
 
@@ -93,34 +99,42 @@ export default function AdminBeranda() {
       const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
       const counts = [0, 0, 0, 0, 0, 0, 0];
       const labels = [];
-      
+      const normalizeYmd = (value: any) => {
+        if (!value) return '';
+        // Supabase bisa mengembalikan date string ("YYYY-MM-DD") atau timestamp.
+        // Kita normalisasi supaya perhitungan kunjungan tidak error karena format/zonawaktu.
+        return String(value).slice(0, 10);
+      };
+
       const startDate = new Date();
-      startDate.setDate(now.getDate() - 6); 
-      const startStr = startDate.toISOString().split('T')[0];
+      startDate.setDate(now.getDate() - 6);
+      startDate.setHours(0, 0, 0, 0); 
 
       const { data: recentVisits, error: visitError } = await supabase
         .from('medical_records')
         .select('treatment_date')
-        .gte('treatment_date', startStr)
+        .gte('treatment_date', startDate.toISOString().split('T')[0])
         .lte('treatment_date', todayStr);
 
       if (visitError) throw visitError;
 
-      if (recentVisits) {
-        for (let i = 0; i < 7; i++) {
-          const target = new Date();
-          target.setDate(startDate.getDate() + i);
-          const targetStr = target.toISOString().split('T')[0];
-          
-          labels.push(dayNames[target.getDay()]);
-          // Filter data yang cocok dengan tanggal spesifik di loop
-          counts[i] = recentVisits.filter(v => v.treatment_date === targetStr).length;
-        }
+      for (let i = 0; i < 7; i++) {
+        const targetDay = new Date(startDate);
+        targetDay.setDate(startDate.getDate() + i);
+        const targetStr = targetDay.toISOString().split('T')[0];
 
-        const maxVal = Math.max(...counts, 1);
-        setChartHeights(counts.map(c => Math.round((c / maxVal) * 100)));
-        setChartLabels(labels);
+        labels.push(dayNames[targetDay.getDay()]);
+
+        if (recentVisits) {
+          counts[i] = recentVisits.filter(v => normalizeYmd(v.treatment_date) === targetStr).length;
+        }
       }
+
+      const maxVal = Math.max(...counts, 1); 
+      const calculatedHeights = counts.map(c => Math.round((c / maxVal) * 100));
+
+      setChartHeights(calculatedHeights);
+      setChartLabels(labels);
 
     } catch (error) {
       console.error("Dashboard error:", error);
@@ -134,22 +148,37 @@ export default function AdminBeranda() {
       <AdminSidebar active="beranda" />
 
       <main className="main-content">
-        <AdminTopbar title="Dashboard Utama" name={adminName} />
+        {/* Topbar berubah judulnya tergantung siapa yang login */}
+        <AdminTopbar title={`Dashboard ${userRole === 'dokter' ? 'Medis' : 'Operasional'}`} name={adminName} />
 
         <div className="scroll-area">
           <div className="metrics-grid">
+            {/* Metrik 1: Tampil untuk Admin & Dokter */}
             <div className="m-card m-purple">
               <span className="m-label">Total Pasien</span>
               <div className="m-val">{loading ? '...' : totalPatients}</div>
               <span className="m-sub">Tercatat di database</span>
             </div>
 
-            <div className="m-card m-red">
-              <span className="m-label">Jatuh Tempo</span>
-              <div className="m-val">{loading ? '...' : dueReminders}</div>
-              <span className="m-sub">Vaksinasi mendesak</span>
-            </div>
+            {/* Metrik 2: HANYA tampil untuk ADMIN (Fokus ke WA Reminder) */}
+            {userRole !== 'dokter' && (
+              <div className="m-card m-red">
+                <span className="m-label">Jatuh Tempo</span>
+                <div className="m-val">{loading ? '...' : dueReminders}</div>
+                <span className="m-sub">Vaksinasi mendesak</span>
+              </div>
+            )}
 
+            {/* Metrik 2 Alternatif: HANYA tampil untuk DOKTER (Fokus ke Antrean/Medis) */}
+            {userRole === 'dokter' && (
+              <div className="m-card" style={{ borderTop: '4px solid #2ed573' }}>
+                <span className="m-label">Antrean Hari Ini</span>
+                <div className="m-val">{loading ? '...' : patients.length}</div>
+                <span className="m-sub">Pasien siap diperiksa</span>
+              </div>
+            )}
+
+            {/* Metrik 3: Grafik tampil untuk semuanya */}
             <div className="m-card m-green chart-col">
               <span className="m-label">Kunjungan (7 Hari Terakhir)</span>
               <div className="mini-chart">
@@ -166,14 +195,25 @@ export default function AdminBeranda() {
             </div>
           </div>
 
-          <Link href="/admin/rekam-medis/tambah" className="banner-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span>Input Rekam Medis & Potong Stok</span>
-          </Link>
+          {/* TOMBOL AKSI UTAMA DIBEDAKAN BERDASARKAN ROLE */}
+          {userRole === 'dokter' ? (
+            <Link href="/admin/rekam-medis/tambah" className="banner-btn" style={{ background: 'linear-gradient(135deg, #2ed573 0%, #20bf6b 100%)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+              </svg>
+              <span>Mulai Pemeriksaan (Input Rekam Medis)</span>
+            </Link>
+          ) : (
+            <Link href="/admin/pasien/tambah" className="banner-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+              </svg>
+              <span>Daftarkan Pasien Baru (Front Desk)</span>
+            </Link>
+          )}
 
           <div className="dashboard-flex">
+            {/* Tabel Pasien Baru: Tampil untuk semuanya */}
             <div className="data-card">
               <div className="card-header-dashboard">
                 <h3>Pasien Baru Terdaftar</h3>
@@ -181,6 +221,7 @@ export default function AdminBeranda() {
               </div>
               <div className="card-inner">
                 <table>
+                  {/* ... (Isi tabel tetap sama persis seperti kodemu) ... */}
                   <thead>
                     <tr>
                       <th>ID Pasien</th>
@@ -217,6 +258,7 @@ export default function AdminBeranda() {
               </div>
             </div>
 
+            {/* List Reminder Vaksin */}
             <div className="ai-card">
               <div className="ai-head">
                 <div className="ai-title">Vaksinasi Mendatang</div>
@@ -237,15 +279,20 @@ export default function AdminBeranda() {
                   ))
                 )}
               </div>
-              <Link href="/admin/reminder" className="ai-btn-primary" style={{textDecoration:'none'}}>
-                <span>Buka Reminder Message</span>
-              </Link>
+              
+              {/* Tombol Kirim WA HANYA muncul untuk Admin */}
+              {userRole !== 'dokter' && (
+                <Link href="/admin/reminder" className="ai-btn-primary" style={{textDecoration:'none'}}>
+                  <span>Buka Portal WhatsApp</span>
+                </Link>
+              )}
             </div>
           </div>
         </div>
       </main>
 
       <style jsx global>{`
+        /* CSS KAMU TETAP SAMA PERSIS DI SINI */
         .admin-body { display: flex; min-height: 100vh; background: #f8f9fd; font-family: 'Plus Jakarta Sans', sans-serif; }
         .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         .scroll-area { padding: 32px; overflow-y: auto; flex: 1; }
@@ -256,6 +303,7 @@ export default function AdminBeranda() {
         .chart-col { grid-column: span 2; }
         .m-label { font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; letter-spacing: 1px; }
         .m-val { font-size: 36px; font-weight: 900; color: #1a1a1a; margin: 8px 0; }
+        .m-sub { font-size: 12px; color: #a19db5; }
         .mini-chart { display: flex; align-items: flex-end; gap: 14px; height: 80px; margin-top: 10px; }
         .chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
         .bar { width: 100%; border-radius: 6px; background: linear-gradient(180deg, #8e52fc 0%, #d463f2 100%); min-height: 4px; }
@@ -273,7 +321,7 @@ export default function AdminBeranda() {
         .a-btn { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #f4eeff; color: #8e52fc; }
         .ai-card { background: #fff; border-radius: 28px; border: 1px solid #eef0f7; padding: 28px; }
         .ai-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .live-tag { padding: 4px 12px; background: #f4eeff; color: #8e52fc; border-radius: 10px; font-size: 10px; font-weight: 900; }
+        .ai-title { font-weight: 800; }
         .reminder-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
         .r-item { display: flex; align-items: center; gap: 16px; padding: 14px; background: #f8f9fd; border-radius: 16px; }
         .dot { width: 8px; height: 8px; border-radius: 50%; }

@@ -21,42 +21,73 @@ export default function Beranda() {
   const fetchUserDataAndPets = async () => {
     setLoading(true);
     try {
-      // 1. Ambil session user yang login
-      const { data: { user } } = await supabase.auth.getUser();
+      // Prioritas: session pemilik dari localStorage (diselaraskan dengan input admin)
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('petcare_owner') : null;
+      const ownerSession = stored ? JSON.parse(stored) : null;
 
-      if (user) {
-        // 2. Ambil data pemilik berdasarkan email/id auth
-        const { data: owner } = await supabase
+      // Fallback lama: Supabase Auth (jika proyek nanti memakai auth email)
+      let owner: any = null;
+
+      if (ownerSession?.id) {
+        const { data: ownerById } = await supabase
           .from('owners')
           .select('*')
-          .eq('email', user.email) // atau .eq('id', user.id) tergantung skema kamu
+          .eq('id', ownerSession.id)
           .single();
-
-        if (owner) {
-          setUserData(owner);
-
-          // 3. Ambil daftar hewan peliharaan milik owner ini
-          const { data: patients } = await supabase
-            .from('patients')
-            .select('*')
-            .eq('owner_id', owner.id);
-
-          if (patients) {
-            // Kita petakan datanya agar sesuai dengan UI
-            const mappedPets = patients.map(p => {
-              // Logika sederhana untuk status (bisa dikembangkan dengan cek tabel vaccination_schedules)
-              return {
-                id: p.id,
-                name: p.name,
-                breed: p.breed || 'Spesies Campuran',
-                status: 'Lihat Detail', // Default status
-                statusClass: 's-green',
-                icon: p.species?.toLowerCase().includes('anjing') ? 'anjing' : 'kucing'
-              };
-            });
-            setPets(mappedPets);
-          }
+        owner = ownerById;
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.email) {
+          router.push('/login/user');
+          return;
         }
+
+        const { data: ownerByEmail } = await supabase
+          .from('owners')
+          .select('*')
+          .eq('email', user.email)
+          .single();
+        owner = ownerByEmail;
+      }
+
+      if (owner) {
+        setUserData(owner);
+
+        // 3. Ambil data hewan (patients) DAN cek jadwal vaksin (vaccination_schedules)
+        // Kita gunakan join sederhana atau query terpisah untuk mendapatkan status kesehatan
+        const { data: patients, error: petError } = await supabase
+          .from('patients')
+          .select(`
+            *,
+            vaccination_schedules (
+              status,
+              scheduled_date
+            )
+          `)
+          .eq('owner_id', owner.id);
+
+        if (patients) {
+          const mappedPets = patients.map((p: any) => {
+            // Logika statistik status: 
+            // Jika ada jadwal vaksin yang 'pending', maka status 'Perlu Vaksin'
+            const hasPendingVaccine = p.vaccination_schedules?.some(
+              (v: any) => v.status === 'pending'
+            );
+
+            return {
+              id: p.id,
+              name: p.name,
+              breed: p.breed || p.species || 'Spesies Campuran',
+              status: hasPendingVaccine ? 'Perlu Vaksin' : 'Sehat',
+              statusClass: hasPendingVaccine ? 's-orange' : 's-green',
+              // Penentuan ikon berdasarkan string spesies
+              icon: p.species?.toLowerCase().includes('anjing') ? 'anjing' : 'kucing'
+            };
+          });
+          setPets(mappedPets);
+        }
+      } else {
+        router.push('/login/user');
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -65,24 +96,39 @@ export default function Beranda() {
     }
   };
 
-  if (loading) return <div style={{ padding: '50px', textAlign: 'center' }}>Memuat data...</div>;
+  if (loading) {
+    return (
+      <div className="loading-state">
+        <div className="spinner"></div>
+        <p>Menghubungkan ke database...</p>
+        <style jsx>{`
+          .loading-state { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; color: #8e52fc; }
+          .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #8e52fc; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="app bg-light">
-      {/* Header menggunakan nama riil dari database */}
       <UserHeader name={userData?.full_name || 'Pelanggan'} />
 
       <div className="scroll-content">
-        <h2 className="section-title">Hewan Peliharaan</h2>
+        <header className="welcome-meta">
+          <p>Selamat datang kembali di PetCare!</p>
+        </header>
+
+        <h2 className="section-title">Hewan Peliharaan ({pets.length})</h2>
         
         {pets.length === 0 ? (
-          <div style={{ padding: '0 28px', color: '#7a7a7a', fontSize: '14px' }}>
-            Belum ada hewan terdaftar.
+          <div className="empty-state">
+            <p>Belum ada hewan terdaftar di akun Anda.</p>
           </div>
         ) : (
           <div className="pet-list">
-            {pets.map((p, i) => (
-              <div key={i} className="p-card" onClick={() => router.push(`/rekam-medis/${p.id}`)}>
+            {pets.map((p) => (
+              <div key={p.id} className="p-card" onClick={() => router.push(`/rekam-medis/${p.id}`)}>
                 <div className={`p-badge ${p.statusClass}`}>{p.status}</div>
                 <div className="p-icon-box">
                   {p.icon === 'kucing' ? (
@@ -118,22 +164,26 @@ export default function Beranda() {
       <BottomNav />
 
       <style jsx>{`
-        /* Style tetap sama seperti sebelumnya */
-        .bg-light { background: #fdfbff; min-height: 100vh; }
-        .scroll-content { padding: 32px 0 100px; }
-        .section-title { font-size: 16px; font-weight: 900; color: #1a1a1a; padding: 0 28px; margin-bottom: 20px; }
+        .bg-light { background: #fdfbff; min-height: 100vh; font-family: 'Inter', sans-serif; }
+        .scroll-content { padding: 20px 0 100px; }
+        .welcome-meta { padding: 0 28px; margin-bottom: 24px; color: #7a7a7a; font-size: 14px; }
+        .section-title { font-size: 16px; font-weight: 900; color: #1a1a1a; padding: 0 28px; margin-bottom: 16px; }
         .pet-list { display: flex; gap: 20px; overflow-x: auto; padding: 10px 28px 30px; scrollbar-width: none; }
         .pet-list::-webkit-scrollbar { display: none; }
-        .p-card { flex-shrink: 0; width: 150px; background: #fff; border-radius: 28px; padding: 24px 16px; text-align: center; border: 1.5px solid #f0f0f0; box-shadow: 0 10px 30px rgba(142, 82, 252, 0.05); position: relative; transition: all 0.3s; cursor: pointer; }
-        .p-icon-box { width: 72px; height: 72px; border-radius: 24px; background: #f4eeff; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #8e52fc; }
-        .p-name { font-size: 17px; font-weight: 800; color: #1a1a1a; }
-        .p-breed { font-size: 12px; color: #7a7a7a; font-weight: 600; margin-top: 2px; }
-        .p-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; font-size: 10px; font-weight: 900; color: #fff; white-space: nowrap; box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
-        .s-green { background: #2ed573; }
-        .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 0 28px; }
-        .q-item { background: #fff; padding: 24px 20px; border-radius: 28px; border: 1.5px solid #f0f0f0; display: flex; flex-direction: column; gap: 12px; cursor: pointer; }
-        .q-icon-sq { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
-        .q-label { font-size: 14px; font-weight: 800; color: #1a1a1a; }
+        .empty-state { padding: 20px 28px; color: #94a3b8; font-style: italic; }
+        .p-card { flex-shrink: 0; width: 160px; background: #fff; border-radius: 28px; padding: 24px 16px; text-align: center; border: 1.5px solid #f0f0f0; box-shadow: 0 10px 30px rgba(142, 82, 252, 0.05); position: relative; transition: all 0.3s; cursor: pointer; }
+        .p-card:active { transform: scale(0.95); }
+        .p-icon-box { width: 64px; height: 64px; border-radius: 20px; background: #f4eeff; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #8e52fc; }
+        .p-name { font-size: 16px; font-weight: 800; color: #1a1a1a; }
+        .p-breed { font-size: 11px; color: #7a7a7a; font-weight: 600; margin-top: 2px; }
+        .p-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 10px; font-size: 9px; font-weight: 900; color: #fff; white-space: nowrap; }
+        .s-green { background: #2ed573; box-shadow: 0 4px 10px rgba(46, 213, 115, 0.3); }
+        .s-orange { background: #ffa502; box-shadow: 0 4px 10px rgba(255, 165, 2, 0.3); }
+        .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 28px; }
+        .q-item { background: #fff; padding: 20px; border-radius: 24px; border: 1.5px solid #f0f0f0; display: flex; flex-direction: column; gap: 10px; cursor: pointer; transition: 0.2s; }
+        .q-item:active { background: #f9f9f9; }
+        .q-icon-sq { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+        .q-label { font-size: 13px; font-weight: 800; color: #1a1a1a; }
       `}</style>
     </div>
   );

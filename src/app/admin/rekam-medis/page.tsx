@@ -12,21 +12,23 @@ export default function RekamMedis() {
   const [patients, setPatients] = useState<any[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingPatients, setLoadingPatients] = useState(true);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   useEffect(() => {
     fetchPatients();
   }, []);
 
   useEffect(() => {
-    if (selectedPatientId) {
+    if (selectedPatientId != null) {
+      setTimeline([]);
       fetchTimeline(selectedPatientId);
     }
   }, [selectedPatientId]);
 
   const fetchPatients = async () => {
     try {
-      setLoading(true);
+      setLoadingPatients(true);
       const { data, error } = await supabase
         .from('patients')
         .select('*, owners(full_name)')
@@ -35,17 +37,20 @@ export default function RekamMedis() {
       if (error) throw error;
       setPatients(data || []);
       if (data && data.length > 0) {
-        setSelectedPatientId(data[0].id);
+        setSelectedPatientId(String(data[0].id));
+      } else {
+        setSelectedPatientId(null);
       }
     } catch (err) {
       console.error('Error fetching patients:', err);
     } finally {
-      setLoading(false);
+      setLoadingPatients(false);
     }
   };
 
   const fetchTimeline = async (patientId: string) => {
     try {
+      setLoadingTimeline(true);
       const { data, error } = await supabase
         .from('medical_records')
         .select('*')
@@ -56,15 +61,27 @@ export default function RekamMedis() {
       setTimeline(data || []);
     } catch (err) {
       console.error('Error fetching timeline:', err);
+      setTimeline([]);
+    } finally {
+      setLoadingTimeline(false);
     }
   };
 
-  const filteredPatients = patients.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.owners?.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const q = searchQuery.trim().toLowerCase();
+  const filteredPatients = patients.filter((p) => {
+    const petName = String(p?.name || '').toLowerCase();
+    const ownerName = String(p?.owners?.full_name || '').toLowerCase();
+    return petName.includes(q) || ownerName.includes(q);
+  });
 
-  const activeP = patients.find(p => p.id === selectedPatientId);
+  const activeP = patients.find(p => String(p?.id) === String(selectedPatientId));
+
+  const formatDate = (value: any) => {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
 
   return (
     <div className="admin-body">
@@ -86,21 +103,30 @@ export default function RekamMedis() {
                   <input type="text" placeholder="Cari nama/pemilik..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
                 </div>
                 <div className="patient-list">
-                  {loading ? (
+                  {loadingPatients ? (
                     <div className="loading-state">
                       <div className="spinner"></div>
                       <p>Memuat data...</p>
                     </div>
-                  ) : filteredPatients.map((p) => (
-                    <div key={p.id} className={`p-item ${selectedPatientId === p.id ? 'active' : ''}`} onClick={() => setSelectedPatientId(p.id)}>
-                      <div className="p-ava">{p.species?.toLowerCase() === 'kucing' ? '🐱' : '🐶'}</div>
-                      <div className="p-info">
-                        <div className="p-name">{p.name}</div>
-                        <div className="p-owner">{p.owners?.full_name}</div>
-                      </div>
-                      {selectedPatientId === p.id && <div className="active-indicator" />}
+                  ) : filteredPatients.length === 0 ? (
+                    <div className="empty-side">
+                      <div className="empty-icon">🔎</div>
+                      <p>{patients.length === 0 ? 'Belum ada pasien.' : 'Pasien tidak ditemukan.'}</p>
                     </div>
-                  ))}
+                  ) : filteredPatients.map((p) => {
+                    const pid = String(p?.id);
+                    const isActive = String(selectedPatientId) === pid;
+                    return (
+                      <div key={pid} className={`p-item ${isActive ? 'active' : ''}`} onClick={() => setSelectedPatientId(pid)}>
+                        <div className="p-ava">{String(p?.species || '').toLowerCase() === 'kucing' ? '🐱' : '🐶'}</div>
+                        <div className="p-info">
+                          <div className="p-name">{p?.name || '-'}</div>
+                          <div className="p-owner">{p?.owners?.full_name || '-'}</div>
+                        </div>
+                        {isActive && <div className="active-indicator" />}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </aside>
@@ -124,12 +150,11 @@ export default function RekamMedis() {
                         </div>
                         <div className="h-pills">
                           <span className="pill green">Status: Sehat</span>
-                          <span className="pill gray">{activeP.weight_kg || '--'} kg</span>
                         </div>
                       </div>
                     </div>
                     <div className="h-right">
-                      <Link href="/admin/rekam-medis/tambah" className="h-btn purple">
+                      <Link href={`/admin/rekam-medis/tambah?id=${encodeURIComponent(String(activeP.id))}`} className="h-btn purple">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         Tambah Rekam Medis
                       </Link>
@@ -142,22 +167,27 @@ export default function RekamMedis() {
                         <h3 className="t-title">Riwayat Tindakan Medis</h3>
                         <p className="t-sub">Menampilkan kronologi pengobatan pasien</p>
                       </div>
-                      <button className="export-btn">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export Data
-                      </button>
                     </div>
 
                     <div className="t-list">
-                      {timeline.length === 0 ? (
+                      {loadingTimeline ? (
+                        <div className="loading-state">
+                          <div className="spinner"></div>
+                          <p>Memuat riwayat medis...</p>
+                        </div>
+                      ) : timeline.length === 0 ? (
                         <div className="empty-timeline">
                           <div className="empty-icon">📂</div>
                           <p>Belum ada catatan medis.</p>
                         </div>
                       ) : timeline.map((item, i) => {
-                        const isVaksin = item.treatment_type?.toLowerCase().includes('vaksin');
+                        const isVaksin = String(item?.treatment_type || '').toLowerCase().includes('vaksin');
+                        const notes = String(item?.diagnosis_notes || '');
+                        const vaccineFromColumn = item?.vaccine_name ? String(item.vaccine_name) : '';
+                        const vaccineFromNotes = notes.replace(/^Pemberian Vaksin\s+/i, '');
+                        const vaccineGiven = vaccineFromColumn || vaccineFromNotes;
                         return (
-                          <div key={i} className="t-item">
+                          <div key={item?.id ?? i} className="t-item">
                             <div className="t-marker">
                               <div className={`t-dot ${isVaksin ? 'v-dot' : ''}`} />
                               <div className="t-line" />
@@ -167,18 +197,17 @@ export default function RekamMedis() {
                                 <span className={`type-badge ${isVaksin ? 'vaksin' : 'medis'}`}>
                                   {isVaksin ? 'VAKSINASI' : 'MEDIS'}
                                 </span>
-                                <div className="b-date">{new Date(item.treatment_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                                <div className="b-date">{formatDate(item?.treatment_date)}</div>
                               </div>
                               <div className="b-content">
                                 {isVaksin && (
                                   <div className="v-detail-box">
                                     <div className="v-label">Vaksin Diberikan:</div>
-                                    <div className="v-name">{item.diagnosis_notes.replace('Pemberian Vaksin ', '')}</div>
+                                    <div className="v-name">{vaccineGiven || '-'}</div>
                                   </div>
                                 )}
-                                <div className="b-doc">Dokter: <strong>{item.doctor_name}</strong></div>
-                                <div className="b-note">"{item.diagnosis_notes}"</div>
-                                {item.weight_kg && <div className="b-weight-tag">⚖️ Berat: {item.weight_kg} kg</div>}
+                                <div className="b-doc">Dokter: <strong>{item?.doctor_name || '-'}</strong></div>
+                                <div className="b-note">"{notes || '-'}"</div>
                               </div>
                             </div>
                           </div>
@@ -220,6 +249,8 @@ export default function RekamMedis() {
         .side-search input { width: 100%; padding: 12px 16px 12px 48px; background: #f8f9fd; border: 1px solid #eef0f7; border-radius: 14px; font-size: 13px; outline: none; }
 
         .patient-list { overflow-y: auto; flex: 1; padding: 0 12px 20px; }
+        .empty-side { padding: 34px 18px; text-align: center; color: #a19db5; }
+        .empty-side .empty-icon { font-size: 22px; margin-bottom: 8px; }
         .p-item { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 18px; cursor: pointer; transition: 0.2s; position: relative; margin-bottom: 4px; }
         .p-item.active { background: #f4eeff; }
         .active-indicator { position: absolute; left: 0; top: 20%; bottom: 20%; width: 4px; background: #8e52fc; border-radius: 0 4px 4px 0; }

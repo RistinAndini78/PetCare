@@ -3,14 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const settingsItems = [
-  { href: '/admin/pengaturan', label: 'Profil Klinik' },
-  { href: '/admin/operasional', label: 'Jam Operasional' },
-  { href: '/admin/staf', label: 'Manajemen Staf' },
-  { href: '/admin/pengaturan/notifikasi', label: 'Notifikasi' },
-  { href: '/admin/pengaturan/integrasi', label: 'Integrasi' },
-  { href: '/admin/pengaturan/akun', label: 'Akun Saya' },
-  { href: '/admin/pengaturan/keamanan', label: 'Keamanan' },
+type SettingsNavItem =
+  | { type: 'section'; label: string }
+  | { type: 'link'; href: string; label: string };
+
+const settingsNav: SettingsNavItem[] = [
+  { type: 'section', label: 'Klinik' },
+  { type: 'link', href: '/admin/pengaturan', label: 'Profil Klinik' },
+  { type: 'link', href: '/admin/pengaturan/notifikasi', label: 'Notifikasi' },
+  { type: 'link', href: '/admin/pengaturan/integrasi', label: 'Integrasi' },
+  { type: 'section', label: 'Akun' },
+  { type: 'link', href: '/admin/pengaturan/akun', label: 'Akun Saya' },
+  { type: 'link', href: '/admin/pengaturan/keamanan', label: 'Keamanan' },
 ];
 
 const sidebarStyle: React.CSSProperties = {
@@ -19,6 +23,15 @@ const sidebarStyle: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: '2px',
   height: 'fit-content', position: 'sticky', top: '104px',
   boxShadow: '0 4px 20px rgba(142,82,252,0.05)', flexShrink: 0,
+};
+
+const sectionStyle: React.CSSProperties = {
+  padding: '12px 12px 6px',
+  fontSize: '10px',
+  fontWeight: 900,
+  letterSpacing: '1px',
+  color: '#a19db5',
+  textTransform: 'uppercase',
 };
 
 const itemStyle = (active: boolean): React.CSSProperties => ({
@@ -40,11 +53,21 @@ export default function SettingsSidebar() {
 
   return (
     <div style={sidebarStyle}>
-      {settingsItems.map((item) => (
-        <Link key={item.href} href={item.href} style={itemStyle(isActive(item.href))}>
-          {item.label}
-        </Link>
-      ))}
+      {settingsNav.map((item) => {
+        if (item.type === 'section') {
+          return (
+            <div key={`section-${item.label}`} style={sectionStyle}>
+              {item.label}
+            </div>
+          );
+        }
+
+        return (
+          <Link key={item.href} href={item.href} style={itemStyle(isActive(item.href))}>
+            {item.label}
+          </Link>
+        );
+      })}
     </div>
   );
 }

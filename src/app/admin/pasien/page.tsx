@@ -11,6 +11,7 @@ export default function ManajemenPasien() {
   const [searchQuery, setSearchQuery] = useState('');
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | number | null>(null);
   const [stats, setStats] = useState({
     total: 0,
     late: 0,
@@ -69,6 +70,35 @@ export default function ManajemenPasien() {
       console.error('Error fetching data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeletePatient = async (patient: any) => {
+    const patientId = patient?.id;
+    const patientName = patient?.name || 'pasien ini';
+
+    const ok = window.confirm(
+      `Yakin ingin menghapus ${patientName}?\n\nTindakan ini akan menghapus data pasien dan riwayat terkait.`
+    );
+    if (!ok) return;
+
+    try {
+      setDeletingId(patientId);
+
+      // Hapus data terkait agar tidak gagal karena foreign key
+      await supabase.from('medical_records').delete().eq('patient_id', patientId);
+      await supabase.from('vaccination_schedules').delete().eq('patient_id', patientId);
+
+      const { error } = await supabase.from('patients').delete().eq('id', patientId);
+      if (error) throw error;
+
+      setPatients((prev) => prev.filter((p) => p?.id !== patientId));
+      alert('Data pasien berhasil dihapus.');
+    } catch (err) {
+      console.error('Error deleting patient:', err);
+      alert('Gagal menghapus data pasien. Coba lagi.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -150,9 +180,20 @@ export default function ManajemenPasien() {
                       </td>
                       <td className="text-val">{new Date(p.created_at).toLocaleDateString('id-ID')}</td>
                       <td className="text-right">
-                        <Link href={`/admin/rekam-medis?id=${p.id}`} className="d-btn">
-                          Lihat Rekam Medis
-                        </Link>
+                        <div className="opsi-wrap">
+                          <Link href={`/admin/rekam-medis?id=${p.id}`} className="d-btn">
+                            Lihat Rekam Medis
+                          </Link>
+                          <button
+                            type="button"
+                            className="del-btn"
+                            disabled={deletingId === p.id}
+                            onClick={() => handleDeletePatient(p)}
+                            title="Hapus pasien"
+                          >
+                            {deletingId === p.id ? 'Menghapus...' : 'Hapus'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -189,9 +230,18 @@ export default function ManajemenPasien() {
         .add-btn { background: #8e52fc; color: #fff; padding: 12px 24px; border-radius: 14px; text-decoration: none; font-size: 13px; font-weight: 800; box-shadow: 0 8px 15px rgba(142, 82, 252, 0.25); transition: 0.3s; }
         .add-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 20px rgba(142, 82, 252, 0.35); }
 
+        .table-container { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
         thead th { padding: 18px 32px; text-align: left; font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; background: #fdfbff; border-bottom: 1.5px solid #f0f0f0; }
         tbody td { padding: 20px 32px; border-bottom: 1px solid #f9f7ff; }
+
+        thead th:last-child,
+        tbody td:last-child {
+          width: 260px;
+          white-space: nowrap;
+        }
+        thead th:last-child { padding-right: 24px; }
+        tbody td:last-child { padding-right: 24px; }
 
         .profile-cell { display: flex; align-items: center; gap: 16px; }
         .avatar-mini { width: 40px; height: 40px; border-radius: 12px; background: #f8f9fd; display: flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid #ece4ff; }
@@ -202,8 +252,27 @@ export default function ManajemenPasien() {
         .badge { padding: 6px 12px; border-radius: 10px; font-size: 11px; font-weight: 800; }
         .s-green { background: #f0fff4; color: #2ed573; }
         
-        .d-btn { background: #fff; border: 1.5px solid #ece4ff; padding: 8px 16px; border-radius: 10px; color: #8e52fc; font-weight: 700; font-size: 12px; text-decoration: none; transition: 0.2s; }
+        .opsi-wrap { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; }
+        .d-btn { display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1.5px solid #ece4ff; padding: 8px 14px; border-radius: 10px; color: #8e52fc; font-weight: 800; font-size: 12px; text-decoration: none; transition: 0.2s; white-space: nowrap; }
         .d-btn:hover { background: #8e52fc; color: #fff; }
+
+        .del-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: #fff5f5;
+          border: 1.5px solid rgba(255, 71, 87, 0.25);
+          padding: 8px 14px;
+          border-radius: 10px;
+          color: #ff4757;
+          font-weight: 900;
+          font-size: 12px;
+          cursor: pointer;
+          transition: 0.2s;
+          white-space: nowrap;
+        }
+        .del-btn:hover { background: #ff4757; color: #fff; border-color: #ff4757; }
+        .del-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         
         .loading-cell { text-align: center; padding: 60px; color: #a19db5; font-style: italic; }
         .text-right { text-align: right; }
