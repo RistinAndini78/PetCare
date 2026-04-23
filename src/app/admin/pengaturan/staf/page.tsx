@@ -1,15 +1,55 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopbar from '@/components/AdminTopbar';
 import SettingsSidebar from '@/components/SettingsSidebar';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client';
 
 export default function AdminStaf() {
-  const staff = [
-    { name: 'drh. Budi', role: 'Dokter Klinik', status: 'Aktif' },
-    { name: 'Siska Natalia', role: 'Resepsionis', status: 'Aktif' },
-  ];
+  const supabase = createClient();
+  const [staffList, setStaffList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStaffData();
+  }, []);
+
+  const fetchStaffData = async () => {
+    try {
+      setLoading(true);
+      console.log("Mencoba mengambil data dari Supabase...");
+      
+      // Mengambil SEMUA data dari tabel 'staf' tanpa filter aneh-aneh dari Supabase
+      const { data, error } = await supabase
+        .from('staf') 
+        .select('*');
+
+      if (error) throw error;
+
+      // DEBUGGING: Cek data mentah dari database di console browser (F12)
+      console.log("Data mentah dari DB:", data);
+
+      // Memfilter Admin Utama di sisi frontend agar aman dari salah ketik huruf besar/kecil di database
+      const filteredStaff = (data || []).filter(
+        (s) => s.role !== 'Admin Utama' && s.role !== 'admin utama'
+      );
+      
+      // Mengurutkan staf berdasarkan abjad nama secara manual
+      filteredStaff.sort((a, b) => 
+        (a.full_name || '').localeCompare(b.full_name || '')
+      );
+
+      setStaffList(filteredStaff);
+      
+    } catch (error: any) {
+      console.error("Gagal mengambil data staf:", error.message);
+      alert("Gagal memuat data staf: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="admin-body">
@@ -24,10 +64,11 @@ export default function AdminStaf() {
             <div className="form-card">
               <div className="card-header-flex">
                 <h2 className="card-title">Daftar Tim<br/>Klinik</h2>
-                <Link href="/admin/staf/tambah" className="add-btn-purple">
+                <Link href="/admin/pengaturan/staf/tambah" className="add-btn-purple">
                   + Tambah Staf
                 </Link>
               </div>
+              
               <div className="table-container">
                 <table>
                   <thead>
@@ -38,13 +79,32 @@ export default function AdminStaf() {
                     </tr>
                   </thead>
                   <tbody>
-                    {staff.map((s, i) => (
-                      <tr key={i}>
-                        <td className="fw-bold">{s.name}</td>
-                        <td className="text-val">{s.role}</td>
-                        <td><span className="text-green">{s.status}</span></td>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={3} style={{ textAlign: 'center', padding: '40px', color: '#a19db5' }}>
+                          Memuat data staf...
+                        </td>
                       </tr>
-                    ))}
+                    ) : staffList.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} style={{ textAlign: 'center', padding: '40px', color: '#a19db5' }}>
+                          Tidak ada staf yang terdaftar.
+                        </td>
+                      </tr>
+                    ) : (
+                      staffList.map((s) => (
+                        <tr key={s.id}>
+                          {/* Pastikan nama kolom di database benar-benar: full_name, role, status */}
+                          <td className="fw-bold">{s.full_name}</td>
+                          <td className="text-val">{s.role}</td>
+                          <td>
+                            <span className={s.status === 'Aktif' ? 'text-green' : 'text-val'}>
+                              {s.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

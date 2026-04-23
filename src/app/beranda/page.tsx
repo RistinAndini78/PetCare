@@ -18,6 +18,18 @@ export default function Beranda() {
     fetchUserDataAndPets();
   }, []);
 
+  const computeVaccineBadge = (nextDate?: string | null) => {
+    if (!nextDate) return { label: 'Belum Ada Jadwal', cls: 's-gray' as const };
+    const now = new Date();
+    const target = new Date(nextDate);
+    if (Number.isNaN(target.getTime())) return { label: 'Belum Ada Jadwal', cls: 's-gray' as const };
+
+    const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return { label: 'Vaksin Telat', cls: 's-red' as const };
+    if (diffDays <= 7) return { label: `Vaksin H-${diffDays}`, cls: 's-orange' as const };
+    return { label: 'Sehat', cls: 's-green' as const };
+  };
+
   const fetchUserDataAndPets = async () => {
     setLoading(true);
     try {
@@ -53,39 +65,49 @@ export default function Beranda() {
       if (owner) {
         setUserData(owner);
 
-        // 3. Ambil data hewan (patients) DAN cek jadwal vaksin (vaccination_schedules)
-        // Kita gunakan join sederhana atau query terpisah untuk mendapatkan status kesehatan
-        const { data: patients, error: petError } = await supabase
+        // Ambil hewan (patients)
+        const { data: patients, error: pErr } = await supabase
           .from('patients')
-          .select(`
-            *,
-            vaccination_schedules (
-              status,
-              scheduled_date
-            )
-          `)
-          .eq('owner_id', owner.id);
+          .select('id, name, species, breed, owner_id, created_at')
+          .eq('owner_id', owner.id)
+          .order('created_at', { ascending: false });
+        if (pErr) throw pErr;
 
-        if (patients) {
-          const mappedPets = patients.map((p: any) => {
-            // Logika statistik status: 
-            // Jika ada jadwal vaksin yang 'pending', maka status 'Perlu Vaksin'
-            const hasPendingVaccine = p.vaccination_schedules?.some(
-              (v: any) => v.status === 'pending'
-            );
+        const ids = (patients || []).map((p: any) => String(p.id));
 
-            return {
-              id: p.id,
-              name: p.name,
-              breed: p.breed || p.species || 'Spesies Campuran',
-              status: hasPendingVaccine ? 'Perlu Vaksin' : 'Sehat',
-              statusClass: hasPendingVaccine ? 's-orange' : 's-green',
-              // Penentuan ikon berdasarkan string spesies
-              icon: p.species?.toLowerCase().includes('anjing') ? 'anjing' : 'kucing'
-            };
-          });
-          setPets(mappedPets);
-        }
+        // Ambil jadwal vaksin terdekat per hewan (vaccination_schedules)
+        const { data: scheduleRows } = ids.length
+          ? await supabase
+              .from('vaccination_schedules')
+              .select('patient_id, next_vaccine_date, status')
+              .in('patient_id', ids)
+              .eq('status', 'scheduled')
+              .order('next_vaccine_date', { ascending: true })
+          : { data: [] as any[] };
+
+        const nextVaccineByPatient = new Map<string, string>();
+        (scheduleRows || []).forEach((s: any) => {
+          const pid = String(s.patient_id);
+          if (!nextVaccineByPatient.has(pid) && s.next_vaccine_date) {
+            nextVaccineByPatient.set(pid, String(s.next_vaccine_date));
+          }
+        });
+
+        const mappedPets = (patients || []).map((p: any) => {
+          const pid = String(p.id);
+          const speciesLower = String(p.species || '').toLowerCase();
+          const v = computeVaccineBadge(nextVaccineByPatient.get(pid) || null);
+          return {
+            id: pid,
+            name: p.name || '-',
+            breed: p.breed || p.species || 'Spesies Campuran',
+            status: v.label,
+            statusClass: v.cls,
+            icon: speciesLower.includes('anjing') ? 'anjing' : 'kucing',
+          };
+        });
+
+        setPets(mappedPets);
       } else {
         router.push('/login/user');
       }
@@ -128,7 +150,7 @@ export default function Beranda() {
         ) : (
           <div className="pet-list">
             {pets.map((p) => (
-              <div key={p.id} className="p-card" onClick={() => router.push(`/rekam-medis/${p.id}`)}>
+              <div key={p.id} className="p-card" onClick={() => router.push(`/rekam-medis`)}>
                 <div className={`p-badge ${p.statusClass}`}>{p.status}</div>
                 <div className="p-icon-box">
                   {p.icon === 'kucing' ? (
@@ -179,6 +201,8 @@ export default function Beranda() {
         .p-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 10px; font-size: 9px; font-weight: 900; color: #fff; white-space: nowrap; }
         .s-green { background: #2ed573; box-shadow: 0 4px 10px rgba(46, 213, 115, 0.3); }
         .s-orange { background: #ffa502; box-shadow: 0 4px 10px rgba(255, 165, 2, 0.3); }
+        .s-red { background: #ff4757; box-shadow: 0 4px 10px rgba(255, 71, 87, 0.25); }
+        .s-gray { background: #94a3b8; box-shadow: 0 4px 10px rgba(148, 163, 184, 0.25); }
         .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 28px; }
         .q-item { background: #fff; padding: 20px; border-radius: 24px; border: 1.5px solid #f0f0f0; display: flex; flex-direction: column; gap: 10px; cursor: pointer; transition: 0.2s; }
         .q-item:active { background: #f9f9f9; }

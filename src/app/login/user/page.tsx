@@ -45,13 +45,6 @@ export default function UserLogin() {
     setLoading(true);
 
     try {
-      // Login pemilik diselaraskan dengan data dari admin (tabel `owners`)
-      // Password awal yang diset oleh admin adalah 123456
-      if (pass !== '123456') {
-        alert('Nomor WA atau Password salah');
-        return;
-      }
-
       const variants = toWaVariants(wa);
       if (variants.length === 0) {
         alert('Nomor WhatsApp tidak valid');
@@ -60,7 +53,7 @@ export default function UserLogin() {
 
       const { data: owners, error } = await supabase
         .from('owners')
-        .select('id, full_name, phone, email, address, created_at')
+        .select('id, full_name, phone, email, address, created_at, password')
         .in('phone', variants)
         .limit(5);
 
@@ -72,6 +65,12 @@ export default function UserLogin() {
 
       if (!ownerMatch) {
         alert('Nomor WA tidak terdaftar. Silakan hubungi klinik.');
+        return;
+      }
+
+      const dbPass = String((ownerMatch as any)?.password || '123456');
+      if (pass !== dbPass) {
+        alert('Nomor WA atau Password salah');
         return;
       }
 
@@ -139,7 +138,7 @@ export default function UserLogin() {
             <div className="i-box">
               <input 
                 type="tel" 
-                placeholder="081234567890" 
+                placeholder="6281234567890" 
                 value={wa} 
                 onChange={e => setWa(e.target.value)} 
                 required
@@ -171,8 +170,8 @@ export default function UserLogin() {
             {!loading && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>}
           </button>
 
-          <div className="akt-link">
-            Belum aktivasi? <Link href="/register">Klik di sini</Link>
+          <div className="akt-link" style={{ lineHeight: 1.6 }}>
+            Akun pemilik <b>dibuat oleh klinik</b>. Jika belum bisa login, silakan hubungi admin klinik untuk didaftarkan.
           </div>
 
           <div className="divider"></div>

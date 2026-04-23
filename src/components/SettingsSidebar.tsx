@@ -10,8 +10,7 @@ type SettingsNavItem =
 const settingsNav: SettingsNavItem[] = [
   { type: 'section', label: 'Klinik' },
   { type: 'link', href: '/admin/pengaturan', label: 'Profil Klinik' },
-  { type: 'link', href: '/admin/pengaturan/notifikasi', label: 'Notifikasi' },
-  { type: 'link', href: '/admin/pengaturan/integrasi', label: 'Integrasi' },
+   { type: 'link', href: '/admin/pengaturan/staf', label: 'Staf' },
   { type: 'section', label: 'Akun' },
   { type: 'link', href: '/admin/pengaturan/akun', label: 'Akun Saya' },
   { type: 'link', href: '/admin/pengaturan/keamanan', label: 'Keamanan' },

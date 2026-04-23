@@ -3,33 +3,28 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/utils/supabase/client'; // Pastikan path import ini benar
+import { createClient } from '@/utils/supabase/client';
 
 export default function AdminLogin() {
-  const [user, setUser] = useState('admin');
+  const router = useRouter();
+  const supabase = createClient();
+
+  const [activeProfile, setActiveProfile] = useState('Admin');
+  const [emailInput, setEmailInput] = useState('');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [activeProfile, setActiveProfile] = useState('Admin');
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(''); // State tambahan untuk pesan error dari database
-  
-  const router = useRouter();
-  const supabase = createClient(); // Inisialisasi Supabase
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // Konfigurasi Profil
   const profiles = [
-    { id: 'Admin', name: 'Admin Staff', ava: 'A', bg: 'linear-gradient(135deg, #1e1e2f 0%, #11111d 100%)' },
-    { id: 'Dokter', name: 'Dokter Hewan', ava: 'D', bg: 'linear-gradient(135deg, #8e52fc 0%, #6e36d4 100%)' },
+    { id: 'Admin', name: 'Admin Utama', ava: 'A', bg: 'linear-gradient(135deg, #1e1e2f 0%, #11111d 100%)' },
+    { id: 'Staf', name: 'Dokter / Staf', ava: 'D', bg: 'linear-gradient(135deg, #8e52fc 0%, #6e36d4 100%)' },
   ];
 
   const selProfile = (profile: any) => {
     setActiveProfile(profile.id);
-    const userMap: any = { 
-      'Admin': 'admin', 
-      'Dokter': 'dokter hewan' 
-    };
-    setUser(userMap[profile.id] || '');
-    setErrorMsg(''); // Bersihkan error saat ganti profil
+    setErrorMsg('');
+    setPass('');
   };
 
   const handleLogin = async () => {
@@ -38,41 +33,70 @@ export default function AdminLogin() {
       return;
     }
 
+    // PENTING: Ganti 'admin@klinik.com' dengan email asli Admin Utama milikmu
+    const loginEmail = activeProfile === 'Admin' ? 'admin@klinik.com' : emailInput;
+
+    if (activeProfile === 'Staf' && !loginEmail) {
+      setErrorMsg('Harap masukkan email staf!');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg('');
 
-    // Trik Mapping: Ubah username menjadi email agar diterima oleh Supabase
-    const emailMap: any = {
-      'admin': 'admin@klinik.com',
-      'dokter hewan': 'dokter@klinik.com'
-    };
-
-    const loginEmail = emailMap[user];
-
     try {
-      // 1. Cek kredensial ke database Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password: pass,
       });
 
-      if (error) throw error;
+      if (authError) throw new Error('Password salah atau email tidak terdaftar.');
 
-      // 2. Jika berhasil, simpan session berdasarkan profil yang dipilih
-      const sessionData = {
-        id: data.user.id,
-        name: activeProfile === 'Admin' ? 'Admin Utama' : 'Dokter Klinik',
-        role: activeProfile.toLowerCase() // Menyimpan role 'admin' atau 'dokter' untuk dasbor
+      let sessionData = {
+        id: authData.user.id,
+        name: '',
+        role: ''
       };
+
+      if (activeProfile === 'Admin') {
+        sessionData.name = 'Admin Utama';
+        sessionData.role = 'admin';
+      } else {
+        const { data: stafData, error: stafError } = await supabase
+          .from('staf')
+          .select('full_name, role')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (stafError || !stafData) {
+          await supabase.auth.signOut();
+          throw new Error('Akses ditolak. Anda tidak terdaftar sebagai staf.');
+        }
+
+        sessionData.name = stafData.full_name;
+        
+        // --- PERBAIKAN LOGIKA ROLE ADA DI SINI ---
+        const roleDariDB = stafData.role.toLowerCase();
+        
+        // Jika jabatannya mengandung kata "dokter" (misal: "Dokter Hewan", "Dokter Klinik")
+        if (roleDariDB.includes('dokter')) {
+          sessionData.role = 'dokter'; // Jadikan paten 'dokter'
+        } else {
+          sessionData.role = roleDariDB; // Sisanya biarkan asli (misal: 'resepsionis')
+        }
+        // -----------------------------------------
+      }
 
       localStorage.setItem('petcare_user', JSON.stringify(sessionData));
       
-      // 3. Arahkan ke Dasbor Dinamis yang sudah kita buat sebelumnya
-      router.push('/admin/beranda');
+      // Tunggu sebentar agar LocalStorage benar-benar tersimpan sebelum pindah halaman
+      setTimeout(() => {
+        router.push('/admin/beranda');
+      }, 300);
 
     } catch (error: any) {
       console.error("Login error:", error.message);
-      setErrorMsg('Autentikasi gagal. Pastikan password sesuai dengan database.');
+      setErrorMsg(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -81,7 +105,6 @@ export default function AdminLogin() {
   return (
     <div className="login-page">
       <style jsx>{`
-        /* CSS KAMU TETAP SAMA PERSIS DI SINI */
         .login-page { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f9faff; font-family: 'Inter', sans-serif; }
         .login-card { width: 100%; max-width: 420px; padding: 20px; animation: fadeIn 0.8s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -104,10 +127,11 @@ export default function AdminLogin() {
         .input-rel input:focus { border-color: #8e52fc; background: #fff; box-shadow: 0 0 0 4px rgba(142, 82, 252, 0.08); }
         .icon-btn { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 18px; }
         .btn-submit { width: 100%; padding: 16px; background: #8e52fc; border: none; border-radius: 14px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .btn-submit:hover { background: #7a3ef2; }
+        .btn-submit:hover:not(:disabled) { background: #7a3ef2; }
+        .btn-submit:disabled { opacity: 0.7; cursor: not-allowed; }
         .footer { text-align: center; margin-top: 24px; font-size: 13px; color: #94a3b8; }
         .link { color: #8e52fc; text-decoration: none; font-weight: 700; }
-        .error-msg { color: #ff4757; font-size: 12px; font-weight: 700; text-align: center; margin-bottom: 16px; background: #ffebee; padding: 8px; border-radius: 8px; }
+        .error-msg { color: #ff4757; font-size: 12px; font-weight: 700; text-align: center; margin-bottom: 16px; background: #ffebee; padding: 10px; border-radius: 8px; }
       `}</style>
 
       <div className="login-card">
@@ -123,8 +147,8 @@ export default function AdminLogin() {
         </div>
 
         <div className="auth-panel">
-          <h1 className="title">Halo Staf!</h1>
-          <p className="subtitle">Pilih profil untuk masuk</p>
+          <h1 className="title">Halo Tim!</h1>
+          <p className="subtitle">Pilih profil untuk masuk ke sistem</p>
 
           <div className="profile-list">
             {profiles.map((p) => (
@@ -139,18 +163,27 @@ export default function AdminLogin() {
             ))}
           </div>
 
-          {/* Menampilkan pesan error jika password salah */}
           {errorMsg && <div className="error-msg">{errorMsg}</div>}
 
           <div className="input-group">
-            <label className="label">Username</label>
+            <label className="label">Email Login</label>
             <div className="input-rel">
-              <input 
-                type="text" 
-                value={user || ''} 
-                readOnly 
-                style={{ backgroundColor: '#f3f4f6', cursor: 'default' }} 
-              />
+              {activeProfile === 'Admin' ? (
+                <input 
+                  type="text" 
+                  value="admin@klinik.com" 
+                  readOnly 
+                  style={{ backgroundColor: '#f3f4f6', color: '#64748b', cursor: 'not-allowed' }} 
+                />
+              ) : (
+                <input 
+                  type="email" 
+                  value={emailInput} 
+                  onChange={(e) => setEmailInput(e.target.value)} 
+                  placeholder="Masukkan email staf..." 
+                  autoFocus
+                />
+              )}
             </div>
           </div>
 
@@ -159,9 +192,9 @@ export default function AdminLogin() {
             <div className="input-rel" style={{ position: 'relative' }}>
               <input 
                 type={showPass ? 'text' : 'password'} 
-                value={pass || ''}
+                value={pass}
                 onChange={(e) => setPass(e.target.value)}
-                placeholder="Password"
+                placeholder="********"
               />
               <span className="icon-btn" onClick={() => setShowPass(!showPass)}>
                 {showPass ? '🙈' : '👁️'}

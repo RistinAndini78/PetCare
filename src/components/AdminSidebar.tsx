@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 
-// Konstanta style (pastikan ini ada di file kamu)
+// Konstanta style
 const sidebarStyle: React.CSSProperties = {
   width: '220px', minHeight: '100vh', background: '#0c071b', color: '#fff',
   display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0,
@@ -65,9 +65,10 @@ export default function AdminSidebar({ active }: { active?: string }) {
 
   const filteredMenu = menu.filter(item => {
     if (userRole === 'dokter') {
-      return ['beranda', 'pasien', 'rekam-medis'].includes(item.id);
+      // PERBAIKAN DI SINI: Menambahkan 'vaksin' dan 'pengaturan'
+      return ['beranda', 'pasien', 'rekam-medis', 'vaksin', 'pengaturan'].includes(item.id);
     }
-    return true;
+    return true; // Admin melihat semua
   });
 
   return (
@@ -90,7 +91,7 @@ export default function AdminSidebar({ active }: { active?: string }) {
       <div style={footer}>
         <div style={uAva}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: '13px', fontWeight: 800 }}>{userName}</div>
+          <div style={{ fontSize: '13px', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userName}</div>
           <div style={{ fontSize: '10px', fontWeight: 700, color: '#8e52fc' }}>{userRole === 'dokter' ? 'Dokter Klinik' : 'Admin Utama'}</div>
         </div>
         <button style={logoutBtn} onClick={handleLogout}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>

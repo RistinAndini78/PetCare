@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopbar from '@/components/AdminTopbar';
 import Link from 'next/link';
-import { createClient } from '@/utils/supabase/client'; // Import Supabase Client
+import { createClient } from '@/utils/supabase/client';
 
 const vaccineTypes = [
   'Rabies', 'Parvovirus', 'Distemper', 'Bordetella', 'Leptospira',
@@ -47,35 +47,32 @@ const S: Record<string, React.CSSProperties> = {
 export default function TambahStokVaksin() {
   const router = useRouter();
   const supabase = createClient();
-  const [isSubmitting, setIsSubmitting] = useState(false); // State untuk loading button
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [form, setForm] = useState({
     namaVaksin: '',
-    tipeVaksin: '',
     jumlah: '',
     satuan: 'Dosis',
     harga: '',
     kadaluarsa: '',
     pemasok: '',
     noBatch: '',
-    forHewan: '',
+    forHewan: '', 
     stokMinimal: '',
     catatan: '',
+    intervalBulan: '',
   });
 
   const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
   const handleSubmit = async () => {
-    // 1. Validasi Input Dasar
-    if (!form.namaVaksin || !form.jumlah || !form.kadaluarsa) {
-      alert('Mohon isi Nama Vaksin, Jumlah Stok, dan Tanggal Kadaluarsa!');
+    if (!form.namaVaksin || !form.jumlah || !form.kadaluarsa || !form.intervalBulan) {
+      alert('Mohon isi semua field wajib (Nama, Jumlah, Kadaluarsa, dan Interval Jeda)!');
       return;
     }
 
     setIsSubmitting(true);
 
-    // 2. Insert Data ke Tabel Supabase
-    // Menyesuaikan key `form` dengan nama kolom di database yang sudah kita sepakati
     const { error } = await supabase
       .from('vaksin')
       .insert([
@@ -85,19 +82,17 @@ export default function TambahStokVaksin() {
           stok_sekarang: parseInt(form.jumlah),
           stok_minimal: form.stokMinimal ? parseInt(form.stokMinimal) : 0,
           harga: form.harga ? parseInt(form.harga) : 0,
-          tanggal_kadaluarsa: form.kadaluarsa
+          tanggal_kadaluarsa: form.kadaluarsa,
+          interval_bulan: parseInt(form.intervalBulan) // Simpan ke DB
         }
       ]);
 
     setIsSubmitting(false);
 
-    // 3. Handle Respons dari Database
     if (error) {
-      console.error('Error insert data:', error);
       alert(`Gagal menyimpan data: ${error.message}`);
     } else {
       alert(`Stok ${form.namaVaksin} berhasil ditambahkan!`);
-      // Pindah ke halaman vaksin dan trigger Next.js untuk memuat data baru
       router.push('/admin/vaksin');
       router.refresh(); 
     }
@@ -110,7 +105,6 @@ export default function TambahStokVaksin() {
         <AdminTopbar title="Tambah Stok Vaksin" subtitle="Daftarkan produk vaksin atau obat baru" />
 
         <div style={S.content}>
-          {/* Back */}
           <div style={S.backRow}>
             <Link href="/admin/vaksin" style={S.backBtn}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
@@ -122,7 +116,6 @@ export default function TambahStokVaksin() {
           </div>
 
           <div style={S.grid}>
-            {/* Form utama */}
             <div style={S.card}>
               <div style={S.cardHead}>
                 <div style={S.cardIcon}>
@@ -133,24 +126,35 @@ export default function TambahStokVaksin() {
               <div style={S.cardBody}>
                 <div style={S.alertBox}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                  <div style={S.alertText}>Pastikan data sesuai dengan label produk vaksin. Kesalahan data dapat mempengaruhi jadwal vaksinasi hewan.</div>
+                  <div style={S.alertText}>Pastikan data sesuai label. Interval jeda vaksinasi akan digunakan untuk pengingat otomatis.</div>
                 </div>
 
                 <div style={S.formGroup}>
-                  <label style={S.label}>Nama Vaksin / Obat *</label>
-                  <select style={S.select} value={form.namaVaksin} onChange={e => set('namaVaksin', e.target.value)}>
-                    <option value="">Pilih jenis vaksin...</option>
-                    {vaccineTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                  </select>
+                <label style={S.label}>Nama Vaksin / Obat *</label>
+                <input 
+                  style={S.input} 
+                  type="text" 
+                  placeholder="Ketik nama vaksin..." 
+                  value={form.namaVaksin} 
+                  onChange={e => set('namaVaksin', e.target.value)} 
+                />
+              </div>
+
+                {/* Input Interval Baru */}
+                <div style={S.formGroup}>
+                  <label style={S.label}>Interval Jeda Vaksinasi (Bulan) *</label>
+                  <input style={S.input} type="number" placeholder="Contoh: 12" value={form.intervalBulan} onChange={e => set('intervalBulan', e.target.value)} min="1" />
                 </div>
 
                 <div style={S.formGroup}>
-                  <label style={S.label}>Untuk Hewan</label>
-                  <select style={S.select} value={form.forHewan} onChange={e => set('forHewan', e.target.value)}>
-                    <option value="">Pilih jenis hewan...</option>
-                    {animalTypes.map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </div>
+                <label style={S.label}>Untuk Hewan *</label>
+                <select style={S.select} value={form.forHewan} onChange={e => set('forHewan', e.target.value)}>
+                  <option value="">Pilih jenis hewan...</option>
+                  <option value="Anjing">Anjing</option>
+                  <option value="Kucing">Kucing</option>
+                  <option value="Kucing & Anjing">Kucing & Anjing</option>
+                </select>
+              </div>     
 
                 <div style={{ ...S.formGroup, ...S.row2 }}>
                   <div>

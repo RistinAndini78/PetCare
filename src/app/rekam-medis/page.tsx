@@ -9,7 +9,8 @@ export default function RekamMedisUser() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [loading, setLoading] = useState(true);
+  const [loadingPets, setLoadingPets] = useState(true);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [pets, setPets] = useState<any[]>([]);
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
@@ -41,15 +42,14 @@ export default function RekamMedisUser() {
   };
 
   const getVaccineName = (row: any) => {
-    const fromColumn = row?.vaccine_name ? String(row.vaccine_name) : '';
     const notes = String(row?.diagnosis_notes || '');
     const fromNotes = notes.replace(/^Pemberian Vaksin\s+/i, '');
-    return fromColumn || fromNotes || '-';
+    return fromNotes || '-';
   };
 
   useEffect(() => {
     const loadPetsAndDefault = async () => {
-      setLoading(true);
+      setLoadingPets(true);
       try {
         const stored = typeof window !== 'undefined' ? localStorage.getItem('petcare_owner') : null;
         const ownerSession = stored ? JSON.parse(stored) : null;
@@ -81,7 +81,7 @@ export default function RekamMedisUser() {
       } catch (e) {
         console.error(e);
       } finally {
-        setLoading(false);
+        setLoadingPets(false);
       }
     };
 
@@ -96,11 +96,11 @@ export default function RekamMedisUser() {
         return;
       }
 
-      setLoading(true);
+      setLoadingTimeline(true);
       try {
         const { data: records, error: rErr } = await supabase
           .from('medical_records')
-          .select('id, patient_id, treatment_date, treatment_type, doctor_name, diagnosis_notes, vaccine_name')
+          .select('id, patient_id, treatment_date, treatment_type, doctor_name, diagnosis_notes, weight_kg')
           .eq('patient_id', selectedPetId)
           .order('treatment_date', { ascending: false });
         if (rErr) throw rErr;
@@ -115,6 +115,7 @@ export default function RekamMedisUser() {
             title: isVaccine ? `Vaksin ${getVaccineName(row)}` : (row?.treatment_type ? String(row.treatment_type) : 'Tindakan Medis'),
             doctor: row?.doctor_name ? String(row.doctor_name) : '',
             action: row?.diagnosis_notes ? String(row.diagnosis_notes) : '-',
+            weight: row?.weight_kg != null ? `${Number(row.weight_kg).toFixed(1)} kg` : '',
           };
         });
 
@@ -143,7 +144,7 @@ export default function RekamMedisUser() {
         setTimeline([]);
         setUpcoming(null);
       } finally {
-        setLoading(false);
+        setLoadingTimeline(false);
       }
     };
 
@@ -184,11 +185,14 @@ export default function RekamMedisUser() {
           .tl-title { font-size: 15px; font-weight: 800; color: var(--text); }
           .tl-doctor { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
           .tl-action { font-size: 13px; color: var(--text); margin-top: 8px; font-weight: 500; }
+          .tl-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+          .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 800; border: 1.5px solid var(--border); background: #fff; color: var(--muted); }
+          .chip strong { color: var(--ink); }
           .upcoming-badge { display: inline-block; padding: 4px 10px; background: var(--pr-pale); color: var(--pr); border-radius: 10px; font-size: 10px; font-weight: 800; margin-bottom: 8px; }
           .empty-box { margin: 16px 20px; padding: 18px; border-radius: 18px; border: 1.5px dashed var(--border); background: #fff; color: var(--muted); text-align: center; font-weight: 600; }
         `}</style>
 
-        {loading && pets.length === 0 ? (
+        {loadingPets && pets.length === 0 ? (
           <div className="empty-box">Menghubungkan ke database...</div>
         ) : pets.length === 0 ? (
           <div className="empty-box">Belum ada hewan terdaftar di akun Anda.</div>
@@ -232,7 +236,7 @@ export default function RekamMedisUser() {
             </div>
           ) : null}
 
-          {loading && selectedPetId ? (
+          {loadingTimeline && selectedPetId ? (
             <div className="tl-item">
               <div className="tl-dot"></div>
               <div className="tl-content">
@@ -262,6 +266,11 @@ export default function RekamMedisUser() {
                     </div>
                   ) : null}
                   <div className="tl-action">{item.action}</div>
+                  {item.weight ? (
+                    <div className="tl-meta">
+                      <span className="chip">Berat: <strong>{item.weight}</strong></span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))

@@ -1,16 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client';
 
 const S = {
   app: { width: '100%', minHeight: '100vh', display: 'flex' as const, flexDirection: 'column' as const, background: 'var(--bg)', position: 'relative' as const },
   scroll: { flex: 1, overflowY: 'auto' as const, paddingBottom: '80px' },
   hero: { background: 'var(--ink)', padding: '50px 20px 48px', textAlign: 'center' as const, position: 'relative' as const, overflow: 'hidden' },
   heroArc: { content: '', position: 'absolute' as const, bottom: '-24px', left: '50%', transform: 'translateX(-50%)', width: '110%', height: '50px', background: 'var(--bg)', borderRadius: '50%' },
-  avatar: { width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg,#8e52fc,#d463f2)', display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const, margin: '0 auto 14px', border: '3px solid rgba(255,255,255,.2)', position: 'relative' as const, zIndex: 1, color: '#fff' },
+  avatar: { width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg,#8e52fc,#d463f2)', display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const, margin: '0 auto 14px', border: '3px solid rgba(255,255,255,.2)', position: 'relative' as const, zIndex: 1, color: '#fff', fontSize: '32px', fontWeight: 900 },
   heroName: { fontSize: '20px', fontWeight: 800, color: '#fff', position: 'relative' as const, zIndex: 1 },
   heroWa: { fontSize: '13px', color: 'rgba(255,255,255,.55)', marginTop: '4px', position: 'relative' as const, zIndex: 1 },
   heroBadge: { display: 'inline-flex' as const, alignItems: 'center' as const, gap: '6px', background: 'rgba(255,255,255,.1)', padding: '5px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,.75)', marginTop: '10px', position: 'relative' as const, zIndex: 1 },
@@ -40,9 +41,126 @@ const S = {
 
 export default function ProfilUser() {
   const router = useRouter();
-  const [notifVaksin, setNotifVaksin] = useState(true);
+  const supabase = createClient();
+
+  const [loading, setLoading] = useState(true);
+  const [owner, setOwner] = useState<any | null>(null);
+  const [pets, setPets] = useState<any[]>([]);
+  const [stats, setStats] = useState({ pets: 0, visits: 0, vaccines: 0 });
+
   const [notifWA, setNotifWA] = useState(true);
   const [modal, setModal] = useState({ open: false, title: '', content: '' });
+
+  const ownerInitial = useMemo(() => {
+    const name = String(owner?.full_name || '').trim();
+    return name ? name.charAt(0).toUpperCase() : '👤';
+  }, [owner?.full_name]);
+
+  const ownerPhoneText = useMemo(() => {
+    const phone = owner?.phone ? String(owner.phone) : '';
+    return phone || '-';
+  }, [owner?.phone]);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      setLoading(true);
+      try {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('petcare_owner') : null;
+        const ownerSession = stored ? JSON.parse(stored) : null;
+        if (!ownerSession?.id) {
+          router.push('/login/user');
+          return;
+        }
+
+        const { data: ownerRow, error: oErr } = await supabase
+          .from('owners')
+          .select('id, full_name, phone, email, address, created_at')
+          .eq('id', ownerSession.id)
+          .single();
+        if (oErr) throw oErr;
+        setOwner(ownerRow);
+
+        const { data: patientRows, error: pErr } = await supabase
+          .from('patients')
+          .select('id, name, species, breed, birth_date, owner_id')
+          .eq('owner_id', ownerSession.id)
+          .order('created_at', { ascending: false });
+        if (pErr) throw pErr;
+
+        const patientIds = (patientRows || []).map((p: any) => String(p.id));
+
+        // visit & vaccine stats dari medical_records (lebih konsisten dengan data admin)
+        const { data: recordRows } = patientIds.length
+          ? await supabase
+              .from('medical_records')
+              .select('id, patient_id, treatment_type')
+              .in('patient_id', patientIds)
+          : { data: [] as any[] };
+
+        const visits = (recordRows || []).length;
+        const vaccines = (recordRows || []).filter((r: any) =>
+          String(r?.treatment_type || '').toLowerCase().includes('vaksin')
+        ).length;
+
+        // badge vaksin terdekat per hewan (opsional)
+        const { data: scheduleRows } = patientIds.length
+          ? await supabase
+              .from('vaccination_schedules')
+              .select('patient_id, next_vaccine_date, status')
+              .in('patient_id', patientIds)
+              .eq('status', 'scheduled')
+              .order('next_vaccine_date', { ascending: true })
+          : { data: [] as any[] };
+
+        const nextVaccineByPatient = new Map<string, string>();
+        (scheduleRows || []).forEach((s: any) => {
+          const pid = String(s.patient_id);
+          if (!nextVaccineByPatient.has(pid) && s.next_vaccine_date) {
+            nextVaccineByPatient.set(pid, String(s.next_vaccine_date));
+          }
+        });
+
+        const computeVaccineBadge = (nextDate?: string | null) => {
+          if (!nextDate) return '';
+          const now = new Date();
+          const target = new Date(nextDate);
+          if (Number.isNaN(target.getTime())) return '';
+          const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 0) return 'Vaksin Telat';
+          if (diffDays <= 7) return `Vaksin H-${diffDays}`;
+          return '';
+        };
+
+        const mappedPets = (patientRows || []).map((p: any) => {
+          const pid = String(p.id);
+          const badge = computeVaccineBadge(nextVaccineByPatient.get(pid) || null);
+          const species = String(p.species || '').toLowerCase();
+          const speciesText = p.species || 'Hewan';
+          const breedText = p.breed || '-';
+          return {
+            id: pid,
+            name: p.name || '-',
+            desc: `${speciesText} · ${breedText}`,
+            badge,
+            iconBg: species.includes('anjing') ? '#fde8d3' : '#f4eeff',
+            iconStroke: species.includes('anjing') ? '#f39c12' : '#8e52fc',
+          };
+        });
+
+        setPets(mappedPets);
+        setStats({ pets: mappedPets.length, visits, vaccines });
+      } catch (e) {
+        console.error(e);
+        setOwner(null);
+        setPets([]);
+        setStats({ pets: 0, visits: 0, vaccines: 0 });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [router, supabase]);
 
   return (
     <div style={S.app}>
@@ -50,23 +168,27 @@ export default function ProfilUser() {
         {/* Hero */}
         <div style={S.hero}>
           <div style={{ content: '', position: 'absolute', bottom: '-24px', left: '50%', transform: 'translateX(-50%)', width: '110%', height: '50px', background: 'var(--bg)', borderRadius: '50%' }} />
-          <div style={S.avatar}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </div>
-          <div style={S.heroName}>Siti Rahayu</div>
-          <div style={S.heroWa}>+62 812-3456-7890</div>
+          <div style={S.avatar}>{ownerInitial}</div>
+          <div style={S.heroName}>{loading ? 'Memuat...' : (owner?.full_name || 'Pelanggan')}</div>
+          <div style={S.heroWa}>{loading ? '—' : ownerPhoneText}</div>
           <div style={S.heroBadge}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}><ellipse cx="6" cy="4" rx="1.8" ry="2.5"/><ellipse cx="18" cy="4" rx="1.8" ry="2.5"/><ellipse cx="2.5" cy="11" rx="1.8" ry="2.5" transform="rotate(-20 2.5 11)"/><ellipse cx="21.5" cy="11" rx="1.8" ry="2.5" transform="rotate(20 21.5 11)"/><path d="M12 10c-3.5 0-7 2.5-7 6.5 0 3 2.5 5.5 7 5.5s7-2.5 7-5.5c0-4-3.5-6.5-7-6.5z"/></svg>
-            Pemilik Hewan · Aktif sejak 2026
+            Pemilik Hewan · {owner?.created_at ? `Aktif sejak ${new Date(owner.created_at).getFullYear()}` : 'Aktif'}
           </div>
         </div>
 
         {/* Stats */}
         <div style={S.stats}>
-          <div style={S.statItem}><div style={S.statVal}>2</div><div style={S.statLabel}>Hewan</div></div>
-          <div style={S.statItem}><div style={S.statVal}>5</div><div style={S.statLabel}>Kunjungan</div></div>
-          <div style={S.statItemLast}><div style={S.statVal}>8</div><div style={S.statLabel}>Vaksinasi</div></div>
+          <div style={S.statItem}><div style={S.statVal}>{loading ? '—' : stats.pets}</div><div style={S.statLabel}>Hewan</div></div>
+          <div style={S.statItem}><div style={S.statVal}>{loading ? '—' : stats.visits}</div><div style={S.statLabel}>Kunjungan</div></div>
+          <div style={S.statItemLast}><div style={S.statVal}>{loading ? '—' : stats.vaccines}</div><div style={S.statLabel}>Vaksinasi</div></div>
         </div>
+
+        {!loading && !owner ? (
+          <div style={{ margin: '16px', padding: '14px 16px', borderRadius: '16px', background: '#fff1f2', border: '1.5px solid #f4baba', color: '#b42318', fontWeight: 700, fontSize: '12.5px', lineHeight: 1.5 }}>
+            Data profil tidak dapat dimuat. Silakan coba login ulang.
+          </div>
+        ) : null}
 
         {/* AKUN SAYA */}
         <div style={S.section}>
@@ -82,9 +204,21 @@ export default function ProfilUser() {
               <div style={S.label}>Ganti Password<span style={S.sub}>Ubah password akun</span></div>
               <span style={S.arrow}>›</span>
             </Link>
-            <div style={S.rowLast} onClick={() => setModal({ open: true, title: 'Verifikasi WA', content: 'Nomor WhatsApp Anda +62 812-3456-7890 telah terverifikasi.' })}>
+            <div
+              style={S.rowLast}
+              onClick={() =>
+                setModal({
+                  open: true,
+                  title: 'Kontak WhatsApp',
+                  content: owner?.phone ? `Nomor WhatsApp Anda: ${owner.phone}` : 'Nomor WhatsApp belum tersedia di data pemilik.',
+                })
+              }
+            >
               <div style={S.icon('#f0fff4')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ed573" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div>
-              <div style={S.label}>No. WhatsApp<span style={S.sub}>+62 812-3456-7890 · Terverifikasi ✓</span></div>
+              <div style={S.label}>
+                No. WhatsApp
+                <span style={S.sub}>{loading ? '—' : (owner?.phone || '-')}</span>
+              </div>
               <span style={S.arrow}>›</span>
             </div>
           </div>
@@ -94,22 +228,58 @@ export default function ProfilUser() {
         <div style={S.section}>
           <div style={S.sectionTitle}>Hewan Peliharaan</div>
           <div style={S.list}>
-            <Link href="/hewan-saya" style={S.row}>
-              <div style={S.icon('#f4eeff')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e52fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="6" cy="4" rx="1.8" ry="2.5"/><ellipse cx="18" cy="4" rx="1.8" ry="2.5"/><ellipse cx="2.5" cy="11" rx="1.8" ry="2.5" transform="rotate(-20 2.5 11)"/><ellipse cx="21.5" cy="11" rx="1.8" ry="2.5" transform="rotate(20 21.5 11)"/><path d="M12 10c-3.5 0-7 2.5-7 6.5 0 3 2.5 5.5 7 5.5s7-2.5 7-5.5c0-4-3.5-6.5-7-6.5z"/></svg></div>
-              <div style={S.label}>Luna<span style={S.sub}>Kucing Persia · 2 tahun</span></div>
-              <span style={S.badge}>Vaksin H-2</span>
-              <span style={S.arrow}>›</span>
-            </Link>
-            <Link href="/hewan-saya" style={S.row}>
-              <div style={S.icon('#fde8d3')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f39c12" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="6" cy="4" rx="1.8" ry="2.5"/><ellipse cx="18" cy="4" rx="1.8" ry="2.5"/><ellipse cx="2.5" cy="11" rx="1.8" ry="2.5" transform="rotate(-20 2.5 11)"/><ellipse cx="21.5" cy="11" rx="1.8" ry="2.5" transform="rotate(20 21.5 11)"/><path d="M12 10c-3.5 0-7 2.5-7 6.5 0 3 2.5 5.5 7 5.5s7-2.5 7-5.5c0-4-3.5-6.5-7-6.5z"/></svg></div>
-              <div style={S.label}>Coki<span style={S.sub}>Pomeranian · 4 tahun</span></div>
-              <span style={S.arrow}>›</span>
-            </Link>
-            <Link href="/admin/pasien/tambah" style={S.rowLast}>
-              <div style={S.icon('#f4eeff')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e52fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
-              <div style={S.label}>Tambah Hewan Baru</div>
-              <span style={S.arrow}>›</span>
-            </Link>
+            {loading ? (
+              <div style={S.row}>
+                <div style={S.icon('#f4eeff')}>…</div>
+                <div style={S.label}>Memuat data hewan...</div>
+              </div>
+            ) : pets.length === 0 ? (
+              <div style={S.row}>
+                <div style={S.icon('#f4eeff')}>🐾</div>
+                <div style={S.label}>
+                  Belum ada hewan
+                  <span style={S.sub}>Silakan hubungi klinik untuk mendaftarkan hewan baru.</span>
+                </div>
+              </div>
+            ) : (
+              <>
+                {pets.slice(0, 2).map((p: any, idx: number) => (
+                  <Link key={p.id} href="/hewan-saya" style={idx === 1 || pets.length === 1 ? S.row : S.row}>
+                    <div style={S.icon(p.iconBg)}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={p.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <ellipse cx="6" cy="4" rx="1.8" ry="2.5" />
+                        <ellipse cx="18" cy="4" rx="1.8" ry="2.5" />
+                        <ellipse cx="2.5" cy="11" rx="1.8" ry="2.5" transform="rotate(-20 2.5 11)" />
+                        <ellipse cx="21.5" cy="11" rx="1.8" ry="2.5" transform="rotate(20 21.5 11)" />
+                        <path d="M12 10c-3.5 0-7 2.5-7 6.5 0 3 2.5 5.5 7 5.5s7-2.5 7-5.5c0-4-3.5-6.5-7-6.5z" />
+                      </svg>
+                    </div>
+                    <div style={S.label}>
+                      {p.name}
+                      <span style={S.sub}>{p.desc}</span>
+                    </div>
+                    {p.badge ? <span style={S.badge}>{p.badge}</span> : null}
+                    <span style={S.arrow}>›</span>
+                  </Link>
+                ))}
+
+                <Link href="/hewan-saya" style={S.rowLast}>
+                  <div style={S.icon('#f4eeff')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e52fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9" />
+                      <path d="M12 4h9" />
+                      <path d="M4 9h16" />
+                      <path d="M4 15h16" />
+                    </svg>
+                  </div>
+                  <div style={S.label}>
+                    Lihat Semua Hewan
+                    <span style={S.sub}>Kelola data hewan peliharaan</span>
+                  </div>
+                  <span style={S.arrow}>›</span>
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
@@ -117,13 +287,6 @@ export default function ProfilUser() {
         <div style={S.section}>
           <div style={S.sectionTitle}>Notifikasi</div>
           <div style={S.list}>
-            <div style={S.row}>
-              <div style={S.icon('#f4eeff')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e52fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
-              <div style={S.label}>Reminder Vaksin<span style={S.sub}>Notif H-7, H-3, H-1</span></div>
-              <div style={S.toggle(notifVaksin)} onClick={() => setNotifVaksin(!notifVaksin)}>
-                <div style={S.toggleDot(notifVaksin)} />
-              </div>
-            </div>
             <div style={S.row}>
               <div style={S.icon('#f0fff4')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ed573" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
               <div style={S.label}>WhatsApp Notifikasi<span style={S.sub}>Terima pesan via WA</span></div>
@@ -156,7 +319,6 @@ export default function ProfilUser() {
           </div>
         </div>
 
-        <Link href="/login" style={S.staffBtn}>Masuk Dashboard Staf</Link>
         <div style={S.logoutBtn} onClick={() => { if (confirm('Keluar dari akun?')) router.push('/'); }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           Keluar dari Akun

@@ -77,25 +77,35 @@ export default function Reminder() {
   };
 
   // FUNGSI UTAMA TRIGGER AI
-  const runReminderAI = async () => {
+  const runReminder = async () => {
     setIsProcessing(true);
     try {
       // PERBAIKAN: Pastikan rute ini sesuai dengan file yang kamu buat di /api/cron/send-reminders/route.ts
       const response = await fetch('/api/cron/send-reminders');
       
       // Cek apakah response oke (status 200)
-      if (!response.ok) throw new Error("Gagal menghubungi server AI");
+      // Cek apakah response oke (status 200)
+      if (!response.ok) {
+        // Ambil pesan penolakan asli dari server
+        const errorAsli = await response.text(); 
+        
+        // Cetak ke layar Console (F12)
+        console.error("===== ALASAN ERROR DARI SERVER =====", errorAsli);
+        
+        // Ubah tampilan error di Next.js
+        throw new Error(`Error API (Status: ${response.status}). Buka tekan F12 lalu cek tab Console untuk baca alasannya!`);
+    }
       
       const result = await response.json();
 
       if (result.success) {
-        alert(`🤖 Berhasil! ${result.sent || 0} pengingat dikirim via WhatsApp.`);
+        alert(`Berhasil! ${result.sent || 0} pengingat dikirim via WhatsApp.`);
         fetchSettingsAndLogs();
       } else {
         alert("Tidak ada jadwal pengingat untuk diproses hari ini.");
       }
     } catch (error: any) {
-      console.error("AI Error:", error);
+      console.error("Error:", error);
       alert("Error: " + error.message);
     } finally {
       setIsProcessing(false);
@@ -124,7 +134,6 @@ export default function Reminder() {
   const stats = [
     { label: 'Total Pesan Terkirim', value: logs.length, sub: 'Log tercatat', type: 'yellow' as const },
     { label: 'Tingkat Respon', value: '94%', sub: 'Prediksi AI', type: 'green' as const },
-    { label: 'Otomatisasi', value: 'Active', sub: 'Status Sistem', type: 'blue' as const },
     { label: 'Pending Task', value: 0, sub: 'Menunggu antrean', type: 'yellow' as const },
   ];
 
@@ -132,7 +141,7 @@ export default function Reminder() {
     <div className="admin-body">
       <AdminSidebar active="reminder" />
       <main className="main-admin">
-        <AdminTopbar title="Reminder AI — Predictive" name="Admin PetCare" />
+        <AdminTopbar title="Pesan Pengingat" name="Admin PetCare" />
 
         <div className="content">
           <div className="stats-grid">
@@ -144,11 +153,11 @@ export default function Reminder() {
           <div className="ai-trigger-card">
             <div className="ai-info">
                <h3>🚀 Jalankan </h3>
-               <p>Klik tombol untuk memicu sistem mengecek jadwal vaksinasi 3 hari ke depan dan mengirim pesan otomatis.</p>
+               <p>Klik tombol untuk memicu sistem mengecek jadwal vaksinasi beberapa ke depan dan mengirim pesan otomatis.</p>
             </div>
             <button 
               className={`btn-ai-action ${isProcessing ? 'loading' : ''}`} 
-              onClick={runReminderAI}
+              onClick={runReminder}
               disabled={isProcessing}
             >
               {isProcessing ? '🤖 Sedang Memproses...' : 'Mulai Pengiriman Otomatis'}

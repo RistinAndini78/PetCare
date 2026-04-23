@@ -14,12 +14,13 @@ export default function AdminBeranda() {
 
   // State Identitas, Role, & Loading
   const [adminName, setAdminName] = useState('Staf Klinik');
-  const [userRole, setUserRole] = useState('admin'); // State baru untuk menyimpan role
+  const [userRole, setUserRole] = useState('admin');
   const [loading, setLoading] = useState(true);
 
   // State Statistik Utama
   const [totalPatients, setTotalPatients] = useState(0);
-  const [dueReminders, setDueReminders] = useState(0);
+  const [dueReminders, setDueReminders] = useState(0); // Untuk Admin (Jatuh Tempo / Overdue)
+  const [upcomingVaccines, setUpcomingVaccines] = useState(0); // BARU: Untuk Dokter (Vaksin 7 Hari ke Depan)
   
   // State Grafik & List Data
   const [chartHeights, setChartHeights] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
@@ -28,6 +29,16 @@ export default function AdminBeranda() {
   const [liveReminders, setLiveReminders] = useState<any[]>([]);
 
   useEffect(() => {
+    // Pastikan sesi Supabase masih aktif
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        localStorage.removeItem('petcare_user');
+        window.location.href = '/login/admin'; 
+      }
+    };
+    checkSession();
+    
     fetchDashboardData();
   }, []);
 
@@ -40,7 +51,6 @@ export default function AdminBeranda() {
         try {
           const user = JSON.parse(storedUser);
           setAdminName(user.name || 'Staf Klinik');
-          // Set role berdasarkan data login (default ke admin jika kosong)
           setUserRole(user.role ? user.role.toLowerCase() : 'admin'); 
         } catch (e) { console.error("Error parse user", e); }
       }
@@ -67,7 +77,7 @@ export default function AdminBeranda() {
         })));
       }
 
-      // 3. Logika Reminder (Jatuh Tempo)
+      // 3. Logika Reminder (Jatuh Tempo & Mendekat)
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
       
@@ -78,9 +88,19 @@ export default function AdminBeranda() {
         .order('next_vaccine_date', { ascending: true });
 
       if (schedules) {
+        // Logika Admin: Hitung yang HARI INI atau SUDAH LEWAT (Jatuh Tempo mendesak)
         const dueCount = schedules.filter(s => s.next_vaccine_date <= todayStr).length;
         setDueReminders(dueCount);
 
+        // Logika Dokter: Hitung yang jadwalnya dalam 7 HARI KE DEPAN
+        const upcomingCount = schedules.filter(s => {
+          const targetDate = new Date(s.next_vaccine_date);
+          const diffDays = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          return diffDays >= 0 && diffDays <= 7;
+        }).length;
+        setUpcomingVaccines(upcomingCount);
+
+        // List 5 Pengingat terdekat untuk ditampilkan di tabel bawah
         const formattedReminders = schedules.slice(0, 5).map(s => {
           const targetDate = new Date(s.next_vaccine_date);
           const diffDays = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -88,7 +108,7 @@ export default function AdminBeranda() {
             name: s.patients?.name,
             species: s.patients?.species,
             vaccine: s.vaccine_name,
-            dueText: diffDays <= 0 ? 'Hari ini' : `${diffDays} hari lagi`,
+            dueText: diffDays < 0 ? 'Terlewat' : diffDays === 0 ? 'Hari ini' : `${diffDays} hari lagi`,
             color: diffDays <= 0 ? '#ff4757' : diffDays <= 3 ? '#ffa502' : '#8e52fc'
           };
         });
@@ -101,8 +121,6 @@ export default function AdminBeranda() {
       const labels = [];
       const normalizeYmd = (value: any) => {
         if (!value) return '';
-        // Supabase bisa mengembalikan date string ("YYYY-MM-DD") atau timestamp.
-        // Kita normalisasi supaya perhitungan kunjungan tidak error karena format/zonawaktu.
         return String(value).slice(0, 10);
       };
 
@@ -144,11 +162,11 @@ export default function AdminBeranda() {
   };
 
   return (
-    <div className="admin-body">
+    // Tambahkan class mode warna agar lebih kentara perbedaannya
+    <div className={`admin-body ${userRole === 'dokter' ? 'dokter-mode' : 'admin-mode'}`}>
       <AdminSidebar active="beranda" />
 
       <main className="main-content">
-        {/* Topbar berubah judulnya tergantung siapa yang login */}
         <AdminTopbar title={`Dashboard ${userRole === 'dokter' ? 'Medis' : 'Operasional'}`} name={adminName} />
 
         <div className="scroll-area">
@@ -160,21 +178,21 @@ export default function AdminBeranda() {
               <span className="m-sub">Tercatat di database</span>
             </div>
 
-            {/* Metrik 2: HANYA tampil untuk ADMIN (Fokus ke WA Reminder) */}
+            {/* Metrik 2: HANYA tampil untuk ADMIN */}
             {userRole !== 'dokter' && (
               <div className="m-card m-red">
                 <span className="m-label">Jatuh Tempo</span>
                 <div className="m-val">{loading ? '...' : dueReminders}</div>
-                <span className="m-sub">Vaksinasi mendesak</span>
+                <span className="m-sub">Vaksinasi mendesak / lewat</span>
               </div>
             )}
 
-            {/* Metrik 2 Alternatif: HANYA tampil untuk DOKTER (Fokus ke Antrean/Medis) */}
+            {/* Metrik 2 Alternatif: HANYA tampil untuk DOKTER (Vaksinasi Mendekat) */}
             {userRole === 'dokter' && (
               <div className="m-card" style={{ borderTop: '4px solid #2ed573' }}>
-                <span className="m-label">Antrean Hari Ini</span>
-                <div className="m-val">{loading ? '...' : patients.length}</div>
-                <span className="m-sub">Pasien siap diperiksa</span>
+                <span className="m-label">Vaksinasi Terdekat</span>
+                <div className="m-val" style={{ color: '#2ed573' }}>{loading ? '...' : upcomingVaccines}</div>
+                <span className="m-sub">Jadwal dalam 7 hari ke depan</span>
               </div>
             )}
 
@@ -221,7 +239,6 @@ export default function AdminBeranda() {
               </div>
               <div className="card-inner">
                 <table>
-                  {/* ... (Isi tabel tetap sama persis seperti kodemu) ... */}
                   <thead>
                     <tr>
                       <th>ID Pasien</th>
@@ -261,7 +278,7 @@ export default function AdminBeranda() {
             {/* List Reminder Vaksin */}
             <div className="ai-card">
               <div className="ai-head">
-                <div className="ai-title">Vaksinasi Mendatang</div>
+                <div className="ai-title">Jadwal Vaksinasi</div>
               </div>
               <div className="reminder-list">
                 {liveReminders.length === 0 ? (
@@ -292,9 +309,13 @@ export default function AdminBeranda() {
       </main>
 
       <style jsx global>{`
-        /* CSS KAMU TETAP SAMA PERSIS DI SINI */
+        /* STYLE TAMBAHAN UNTUK PEMBEDA MODE WARNA */
+        .admin-mode .main-content { border-top: 4px solid #8e52fc; }
+        .dokter-mode .main-content { border-top: 4px solid #2ed573; }
+
+        /* CSS BAWAAN KAMU */
         .admin-body { display: flex; min-height: 100vh; background: #f8f9fd; font-family: 'Plus Jakarta Sans', sans-serif; }
-        .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; box-sizing: border-box; }
         .scroll-area { padding: 32px; overflow-y: auto; flex: 1; }
         .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
         .m-card { background: #fff; padding: 28px; border-radius: 24px; border: 1px solid #eef0f7; box-shadow: 0 10px 30px rgba(0,0,0,0.02); }
@@ -308,7 +329,8 @@ export default function AdminBeranda() {
         .chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
         .bar { width: 100%; border-radius: 6px; background: linear-gradient(180deg, #8e52fc 0%, #d463f2 100%); min-height: 4px; }
         .label { font-size: 10px; font-weight: 700; color: #a19db5; }
-        .banner-btn { width: 100%; background: linear-gradient(135deg, #8e52fc 0%, #6c31e0 100%); padding: 18px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 800; margin-bottom: 32px; }
+        .banner-btn { width: 100%; background: linear-gradient(135deg, #8e52fc 0%, #6c31e0 100%); padding: 18px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 800; margin-bottom: 32px; transition: transform 0.2s; }
+        .banner-btn:hover { transform: translateY(-2px); }
         .dashboard-flex { display: grid; grid-template-columns: 1fr 340px; gap: 32px; }
         .data-card { background: #fff; border-radius: 28px; border: 1px solid #eef0f7; overflow: hidden; }
         .card-header-dashboard { padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f8f9fb; }
@@ -318,7 +340,8 @@ export default function AdminBeranda() {
         tbody td { padding: 18px 32px; font-size: 14px; color: #1a1a1a; border-bottom: 1px solid #f9f7ff; }
         .fw-bold { font-weight: 700; color: #8e52fc; }
         .badge { padding: 6px 12px; border-radius: 10px; font-size: 11px; font-weight: 800; background: #f0fff4; color: #2ed573; }
-        .a-btn { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #f4eeff; color: #8e52fc; }
+        .a-btn { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #f4eeff; color: #8e52fc; transition: 0.2s; }
+        .a-btn:hover { background: #8e52fc; color: #fff; }
         .ai-card { background: #fff; border-radius: 28px; border: 1px solid #eef0f7; padding: 28px; }
         .ai-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
         .ai-title { font-weight: 800; }
@@ -327,7 +350,8 @@ export default function AdminBeranda() {
         .dot { width: 8px; height: 8px; border-radius: 50%; }
         .info { flex: 1; }
         .days { font-size: 12px; font-weight: 800; }
-        .ai-btn-primary { width: 100%; height: 50px; background: #1a1a1a; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 800; }
+        .ai-btn-primary { width: 100%; height: 50px; background: #1a1a1a; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 800; transition: 0.2s; }
+        .ai-btn-primary:hover { background: #333; }
         .text-right { text-align: right; }
       `}</style>
     </div>

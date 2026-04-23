@@ -11,6 +11,7 @@ export default function TambahPemilik() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -24,24 +25,62 @@ export default function TambahPemilik() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
+      const passwordDefault = '123456';
+      
+      // 1. Simpan data pemilik ke Supabase
       const { error: insertError } = await supabase
         .from('owners')
-        .insert([
-          {
-            full_name: formData.fullName,
-            phone: formData.phone,
-            email: formData.email,
-            address: `${formData.address}${formData.city ? ' - ' + formData.city : ''}`
-          }
-        ]);
+        .insert([{
+          full_name: formData.fullName,
+          phone: formData.phone,
+          email: formData.email,
+          address: `${formData.address}${formData.city ? ' - ' + formData.city : ''}`,
+          password: passwordDefault
+        }]);
 
       if (insertError) throw insertError;
 
-      router.push('/admin/pemilik');
+      // 2. Persiapkan isi pesan WhatsApp
+      const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const loginUrl = `${appUrl}/login/user`;
+      
+      // Format pesan yang rapi dan profesional
+      const message = `Halo Kak ${formData.fullName}! 👋\n\nSelamat! Akun PetCare Owner Portal Anda sudah berhasil dibuat oleh klinik.\n\nBerikut adalah data akses Anda:\n🔗 Link Login: ${loginUrl}\n📞 Nomor WA: ${formData.phone}\n🔑 Password Awal: ${passwordDefault}\n\nSetelah berhasil login, mohon segera mengganti password Anda demi keamanan. Terima kasih! 🐾`;
+
+      // 3. Eksekusi pengiriman WA Otomatis via API
+      if (formData.phone) {
+        try {
+          const sendRes = await fetch('/api/send-wa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              phone: formData.phone, 
+              message: message 
+            }),
+          });
+          
+          if (sendRes.ok) {
+            setSuccess('✅ Pemilik berhasil didaftarkan & Pesan akses WhatsApp terkirim otomatis!');
+          } else {
+            console.error('Send WA failed');
+            setSuccess('⚠️ Pemilik berhasil didaftarkan, namun API WhatsApp sedang gangguan. Pesan otomatis gagal terkirim.');
+          }
+        } catch (e) {
+          console.error('Send WA error:', e);
+          setSuccess('⚠️ Pemilik berhasil didaftarkan. Pengiriman pesan WA terkendala jaringan/internet.');
+        }
+      } else {
+        setSuccess('✅ Pemilik berhasil didaftarkan (Tanpa nomor WhatsApp).');
+      }
+
+      // 4. Kosongkan form kembali setelah berhasil
+      setFormData({ fullName: '', phone: '', email: '', city: '', address: '' });
+      
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat menyimpan data');
+      setError(err.message || 'Terjadi kesalahan saat menyimpan data ke database.');
     } finally {
       setLoading(false);
     }
@@ -76,7 +115,12 @@ export default function TambahPemilik() {
             <div className="card-body">
               {error && (
                 <div style={{ background: '#fff5f5', color: '#ff4757', padding: '16px', borderRadius: '12px', marginBottom: '24px', fontSize: '14px', fontWeight: 600, border: '1px solid #ffebeb' }}>
-                  ⚠️ {error}
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div style={{ background: '#f0fff4', color: '#166534', padding: '16px', borderRadius: '12px', marginBottom: '24px', fontSize: '14px', fontWeight: 700, border: '1px solid #bbf7d0' }}>
+                  {success}
                 </div>
               )}
 
@@ -186,7 +230,7 @@ export default function TambahPemilik() {
               <div className="bottom-actions">
                 <Link href="/admin/pemilik" className="btn-cancel">Batal & Kembali</Link>
                 <button type="submit" className="btn-save" disabled={loading}>
-                  <span>{loading ? 'Menyimpan...' : 'Simpan & Daftarkan Pemilik Baru'}</span>
+                  <span>{loading ? 'Menyimpan & Mengirim WA...' : 'Simpan & Daftarkan Pemilik Baru'}</span>
                   {!loading && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>}
                 </button>
               </div>
@@ -248,6 +292,7 @@ export default function TambahPemilik() {
         
         .btn-save { padding: 16px 36px; background: #1a1a1a; color: #fff; border: none; border-radius: 14px; font-size: 15px; font-weight: 800; cursor: pointer; transition: all 0.25s; display: flex; align-items: center; gap: 12px; }
         .btn-save:hover { background: #8e52fc; transform: translateY(-2px); box-shadow: 0 10px 24px rgba(142, 82, 252, 0.25); }
+        .btn-save:disabled { opacity: 0.7; cursor: not-allowed; }
       `}</style>
     </div>
   );

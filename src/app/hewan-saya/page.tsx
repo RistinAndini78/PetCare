@@ -157,9 +157,6 @@ export default function HewanSaya() {
             </div>
             <div className="header-sub">{headerCountText}</div>
           </div>
-          <div className="h-btn" onClick={() => router.push('/notifikasi')}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-          </div>
         </div>
       </header>
 
@@ -206,7 +203,6 @@ export default function HewanSaya() {
 
         <div className="section-head">
           <div className="section-title">Daftar Hewan</div>
-          <div className="section-link" onClick={() => alert('Silakan hubungi klinik untuk menambahkan hewan baru.')}>+ Tambah Hewan</div>
         </div>
 
         <div className="pet-list">
@@ -258,16 +254,6 @@ export default function HewanSaya() {
           <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--muted)' }}>Daftarkan Hewan Baru ke Klinik</span>
         </div>
 
-        <a href="/diagnosa-ai" className="ai-banner">
-          <div className="ai-banner-icon">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2z"/><path d="M19 8h-2V6a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2z"/><path d="M8 12h.01"/><path d="M16 12h.01"/><path d="M9 16c1-1 2-1 3-1s2 0 3 1"/></svg>
-          </div>
-          <div className="ai-banner-info">
-            <div className="ai-banner-label">🩺 Diagnosa AI</div>
-            <div className="ai-banner-sub">Ceritakan gejala hewan Anda, AI akan bantu analisis</div>
-          </div>
-          <span className="ai-banner-arrow">›</span>
-        </a>
       </div>
       <BottomNav />
     </div>

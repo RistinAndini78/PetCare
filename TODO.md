@@ -1,0 +1,1 @@
+# Task Reset: Kembalikan ke source code semula\n\nFitur hapus pemilik dibatalkan per user request.\n\n- [x] Backup original ke `src/app/admin/pemilik/page.original.tsx` ✅\n- [x] Restore original code ke `src/app/admin/pemilik/page.tsx` ✅\n\nStatus: Halaman pemilik kembali ke kondisi awal (tanpa tombol hapus).
