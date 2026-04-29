@@ -133,7 +133,6 @@ export default function Reminder() {
 
   const stats = [
     { label: 'Total Pesan Terkirim', value: logs.length, sub: 'Log tercatat', type: 'yellow' as const },
-    { label: 'Tingkat Respon', value: '94%', sub: 'Prediksi AI', type: 'green' as const },
     { label: 'Pending Task', value: 0, sub: 'Menunggu antrean', type: 'yellow' as const },
   ];
 
