@@ -10,9 +10,10 @@ export default function EditProfil() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     address: ''
   });
 
@@ -25,7 +26,7 @@ export default function EditProfil() {
 
         const { data, error } = await supabase
           .from('owners')
-          .select('full_name, email, address')
+          .select('full_name, email, address, phone')
           .eq('id', session.id)
           .single();
 
@@ -34,6 +35,7 @@ export default function EditProfil() {
         setFormData({
           name: data.full_name || '',
           email: data.email || '',
+          phone: data.phone || '',
           address: data.address || ''
         });
       } catch (e) {
@@ -56,6 +58,7 @@ export default function EditProfil() {
         .update({
           full_name: formData.name,
           email: formData.email,
+          phone: formData.phone || null,
           address: formData.address
         })
         .eq('id', session.id);
@@ -106,7 +109,22 @@ export default function EditProfil() {
 
           <div className="field">
             <label>No. WhatsApp</label>
-            <input type="text" className="input-field disabled" value="Nomor tersembunyi" disabled />
+            <input 
+              type="tel" 
+              className="input-field" 
+              value={formData.phone} 
+              onChange={e => {
+                const raw = e.target.value.replace(/[^\\d]/g, '');
+                let formatted = raw;
+                if (raw.startsWith('0')) {
+                  formatted = '62' + raw.slice(1);
+                } else if (!raw.startsWith('62')) {
+                  formatted = '62' + raw;
+                }
+                setFormData({...formData, phone: formatted});
+              }} 
+              placeholder="08xxxxxxxxx atau 62xxxxxxxxx"
+            />
           </div>
 
           <div className="field">

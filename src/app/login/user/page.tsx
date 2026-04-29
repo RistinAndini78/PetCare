@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/utils/supabase/client'; // Pastikan path ini benar
+import { createClient } from '@/utils/supabase/client';
+
 
 export default function UserLogin() {
   const router = useRouter();
@@ -99,7 +100,7 @@ export default function UserLogin() {
         .login-v-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fdfbff; font-family: 'Plus Jakarta Sans', sans-serif; }
         .login-wrap { width: 100%; max-width: 440px; padding: 24px; position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center; }
         .brand-header { text-align: center; margin-bottom: 32px; }
-        .logo-box { width: 56px; height: 56px; background: linear-gradient(135deg, #d463f2 0%, #8e52fc 100%); border-radius: 16px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 8px 24px rgba(142, 82, 252, 0.3); }
+        .logo-box { width: 56px; height: 56px; background: #f4eeff; border-radius: 16px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; color: #8e52fc; box-shadow: 0 4px 12px rgba(142, 82, 252, 0.08); }
         .b-title { font-size: 20px; font-weight: 900; color: #c084fc; letter-spacing: -0.3px; }
         .b-sub { font-size: 10px; font-weight: 800; color: #1a1a1a; text-transform: uppercase; letter-spacing: 2px; margin-top: -2px; }
         .auth-panel { background: #fff; width: 100%; border-radius: 28px; padding: 40px 32px; border: 1.5px solid #f0f0f0; box-shadow: 0 16px 50px rgba(142, 82, 252, 0.04); }
@@ -123,8 +124,12 @@ export default function UserLogin() {
       <div className="login-wrap">
         <div className="brand-header">
           <div className="logo-box">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
           </div>
+          
           <div className="b-title">PetCare</div>
           <div className="b-sub">Owner Portal</div>
         </div>

@@ -1,43 +1,126 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 
+interface Notification {
+  id: number;
+  type: 'vaccine' | 'info' | 'success';
+  title: string;
+  text: string;
+  time: string;
+  unread: boolean;
+  color: string;
+  pale: string;
+}
+
 export default function Notifikasi() {
   const router = useRouter();
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      type: 'vaccine',
-      title: 'Vaksinasi Segera!',
-      text: 'Luna dijadwalkan untuk vaksin Rabies dalam 2 hari ke depan. Mohon kunjungi klinik segera.',
-      time: '10 Menit yang lalu',
-      unread: true,
-      color: '#ff4757',
-      pale: '#fff5f5'
-    },
-    {
-      id: 2,
-      type: 'info',
-      title: 'Layanan Baru Tersedia',
-      text: 'Sekarang Anda bisa mengecek rekam medis lengkap langsung dari aplikasi PetCare!',
-      time: '2 Jam yang lalu',
-      unread: true,
-      color: '#8e52fc',
-      pale: '#f4eeff'
-    },
-    {
-      id: 3,
-      type: 'success',
-      title: 'Update Profil Berhasil',
-      text: 'Informasi profil Anda telah berhasil diperbarui di server kami.',
-      time: 'Kemarin, 14:20',
-      unread: false,
-      color: '#2ed573',
-      pale: '#f0fff4'
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const supabase = createClient();
+
+  const relativeTime = (date: Date): string => {
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const absDiffDays = Math.abs(Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+    if (diffMs > 0) {
+      if (absDiffDays === 0) return 'Hari ini';
+      if (absDiffDays === 1) return '1 Hari lagi';
+      return `${absDiffDays} Hari lagi`;
+    } else {
+      if (absDiffDays === 0) return 'Hari ini';
+      if (absDiffDays === 1) return '1 Hari yang lalu';
+      if (absDiffDays === 2) return '2 Hari yang lalu';
+      if (absDiffDays < 7) return `${absDiffDays} Hari yang lalu`;
+      return 'Minggu lalu';
     }
-  ]);
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('petcare_owner') : null;
+        const ownerSession = stored ? JSON.parse(stored) : null;
+        if (!ownerSession?.id) {
+          setLoading(false);
+          return;
+        }
+
+        // Get patients
+        const { data: patients } = await supabase
+          .from('patients')
+          .select('id, name')
+          .eq('owner_id', ownerSession.id);
+
+        if (!patients?.length) {
+          setLoading(false);
+          return;
+        }
+
+        const patientIds = patients.map((p: any) => p.id);
+
+        // Vaccine schedules upcoming (next 7 days)
+        const { data: schedules } = await supabase
+          .from('vaccination_schedules')
+          .select('id, patient_id, vaccine_name, next_vaccine_date, patients(name)')
+          .eq('status', 'scheduled')
+          .gte('next_vaccine_date', new Date().toISOString().split('T')[0])
+          .lte('next_vaccine_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+          .in('patient_id', patientIds);
+
+        // Medical records recent (last 7 days)
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const { data: records } = await supabase
+          .from('medical_records')
+          .select('id, patient_id, treatment_date, treatment_type, patients(name)')
+          .gte('treatment_date', sevenDaysAgo)
+          .in('patient_id', patientIds)
+          .order('treatment_date', { ascending: false })
+          .limit(3);
+
+        // Transform to notifications
+        const vaccineNotifs = (schedules || []).map((s: any, index: number) => ({
+          id: 1000 + index,
+          type: 'vaccine' as const,
+          title: 'Vaksinasi Segera!',
+          text: `${s.patients?.name || 'Hewan'} dijadwalkan untuk vaksin ${s.vaccine_name} dalam waktu dekat.`,
+          time: relativeTime(new Date(s.next_vaccine_date)),
+          unread: true,
+          color: '#ff4757',
+          pale: '#fff5f5'
+        }));
+
+        const recordNotifs = (records || []).map((r: any, index: number) => ({
+          id: 2000 + index,
+          type: 'info' as const,
+          title: 'Rekam Medis Baru',
+          text: `${r.patients?.name || 'Hewan'}: ${r.treatment_type || 'Perawatan'}`,
+          time: relativeTime(new Date(r.treatment_date)),
+          unread: true,
+          color: '#8e52fc',
+          pale: '#f4eeff'
+        }));
+
+        const allNotifs = [...vaccineNotifs, ...recordNotifs]
+          .sort((a, b) => new Date().getTime() - new Date().getTime()); // Simplified sort
+
+        setNotifications(allNotifs);
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+        setNotifications([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [supabase]);
 
   const markAsRead = (id: number) => {
     setNotifications(notifications.map(n => n.id === id ? { ...n, unread: false } : n));
@@ -73,23 +156,33 @@ export default function Notifikasi() {
           .n-time { font-size: 10.5px; color: #a19db5; font-weight: 700; margin-top: 8px; }
         `}</style>
         
-        {notifications.map((n, i) => (
-          <div key={n.id} className="n-card" onClick={() => markAsRead(n.id)}>
-            {n.unread && <div className="unread-indicator"></div>}
-            
-            <div className="n-icon" style={{ background: n.pale, color: n.color }}>
-              {n.type === 'vaccine' && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m18 2 4 4"/><path d="m17 7 3-3"/><path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l-.6-.6c-1-1-1-2.5 0-3.4L15 5"/><path d="m9 11 4 4"/><path d="m5 19-3 3"/><path d="m14 4 6 6"/></svg>}
-              {n.type === 'info' && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>}
-              {n.type === 'success' && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
-            </div>
-            
-            <div className="n-body">
-              <div className="n-title">{n.title}</div>
-              <div className="n-text">{n.text}</div>
-              <div className="n-time">{n.time}</div>
-            </div>
+        {loading ? (
+          <div className="n-card" style={{justifyContent: 'center', padding: '40px 24px'}}>
+            <div style={{color: '#a19db5', fontWeight: '600', fontSize: '14px'}}>Memuat Notifikasi...</div>
           </div>
-        ))}
+        ) : notifications.length === 0 ? (
+          <div className="n-card" style={{justifyContent: 'center', padding: '40px 24px'}}>
+            <div style={{color: '#a19db5', fontWeight: '600', fontSize: '14px'}}>Belum ada notifikasi</div>
+          </div>
+        ) : (
+          notifications.map((n) => (
+            <div key={n.id} className="n-card" onClick={() => markAsRead(n.id)}>
+              {n.unread && <div className="unread-indicator"></div>}
+              
+              <div className="n-icon" style={{ background: n.pale, color: n.color }}>
+                {n.type === 'vaccine' && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m18 2 4 4"/><path d="m17 7 3-3"/><path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l-.6-.6c-1-1-1-2.5 0-3.4L15 5"/><path d="m9 11 4 4"/><path d="m5 19-3 3"/><path d="m14 4 6 6"/></svg>}
+                {n.type === 'info' && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>}
+                {n.type === 'success' && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+              </div>
+              
+              <div className="n-body">
+                <div className="n-title">{n.title}</div>
+                <div className="n-text">{n.text}</div>
+                <div className="n-time">{n.time}</div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
       <BottomNav />
     </div>

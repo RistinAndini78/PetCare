@@ -22,12 +22,69 @@ export default function AdminBeranda() {
   const [dueReminders, setDueReminders] = useState(0); // Untuk Admin (Jatuh Tempo / Overdue)
   const [upcomingVaccines, setUpcomingVaccines] = useState(0); // BARU: Untuk Dokter (Vaksin 7 Hari ke Depan)
   
-  // State Grafik & List Data
+// State Grafik & List Data
   const [chartHeights, setChartHeights] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [chartCounts, setChartCounts] = useState<number[]>(Array(7).fill(0));
   const [chartLabels, setChartLabels] = useState<string[]>(['S', 'S', 'R', 'K', 'J', 'S', 'M']);
   const [patients, setPatients] = useState<any[]>([]);
   const [liveReminders, setLiveReminders] = useState<any[]>([]);
 
+  useEffect(() => {
+    const fetchStatistikKunjungan = async () => {
+      try {
+        // 1. Buat daftar 7 tanggal terakhir (H-6 sampai Hari Ini)
+        const labels: string[] = [];
+        const dateStrings: string[] = [];
+        
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          
+          // Format Label untuk di bawah grafik (misal: "29/04")
+          const tgl = d.getDate().toString().padStart(2, '0');
+          const bln = (d.getMonth() + 1).toString().padStart(2, '0');
+          labels.push(`${tgl}/${bln}`);
+          
+          // Format untuk filter database Supabase (YYYY-MM-DD)
+          const yyyy = d.getFullYear();
+          dateStrings.push(`${yyyy}-${bln}-${tgl}`);
+        }
+
+        // Tanggal paling tua dari 7 hari tersebut
+        const startDate = dateStrings[0]; 
+
+        // 2. Ambil data dari Supabase
+        const { data: records, error } = await supabase
+          .from('medical_records')
+          .select('treatment_date')
+          .gte('treatment_date', startDate);
+
+        if (error) throw error;
+
+        // 3. Hitung jumlah kunjungan dan ubah jadi persentase grafik
+        // Asumsi: 10 kunjungan = 100% tinggi bar grafik. 
+        // (Bisa diganti angka 10-nya kalau target kunjungan harianmu lebih besar)
+        const MAX_KUNJUNGAN = 10; 
+
+        const counts = dateStrings.map(dateStr => 
+          records?.filter(r => r.treatment_date === dateStr).length || 0
+        );
+        const maxKunjungan = Math.max(...counts, 1);
+        const heights = counts.map(count => Math.min((count / maxKunjungan) * 100, 100));
+
+        // 4. Update UI Grafik!
+        setChartCounts(counts);
+        setChartLabels(labels);
+        setChartHeights(heights);
+
+      } catch (error) {
+        console.error("Gagal mengambil data statistik:", error);
+      }
+    };
+
+    fetchStatistikKunjungan();
+  }, [supabase]); // Pastikan supabase ada di dalam dependency array jika error eslint
+  
   useEffect(() => {
     // Pastikan sesi Supabase masih aktif
     const checkSession = async () => {
@@ -151,9 +208,6 @@ export default function AdminBeranda() {
       const maxVal = Math.max(...counts, 1); 
       const calculatedHeights = counts.map(c => Math.round((c / maxVal) * 100));
 
-      setChartHeights(calculatedHeights);
-      setChartLabels(labels);
-
     } catch (error) {
       console.error("Dashboard error:", error);
     } finally {
@@ -200,16 +254,18 @@ export default function AdminBeranda() {
             <div className="m-card m-green chart-col">
               <span className="m-label">Kunjungan (7 Hari Terakhir)</span>
               <div className="mini-chart">
-                {chartHeights.map((h, i) => (
-                  <div key={i} className="chart-item">
-                    <div 
-                      className="bar" 
-                      style={{ height: `${loading ? 10 : h}%`, transition: 'height 1s ease' }}
-                    ></div>
-                    <span className="label">{chartLabels[i]}</span>
-                  </div>
-                ))}
-              </div>
+  {chartHeights.map((h, i) => (
+    <div key={i} className="chart-item">
+      {/* PERHATIKAN BARIS STYLE DI BAWAH INI */}
+      <div 
+        className="bar" 
+        style={{ height: `${h}%`, transition: 'height 1s ease' }}
+        title={`${chartCounts[i]} Kunjungan`}
+      ></div>
+      <span className="label">{chartLabels[i]}</span>
+    </div>
+  ))}
+</div>
             </div>
           </div>
 

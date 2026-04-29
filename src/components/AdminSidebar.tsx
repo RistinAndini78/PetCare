@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
+import BrandLogo from './BrandLogo';
 
 // Konstanta style
 const sidebarStyle: React.CSSProperties = {
@@ -74,7 +75,7 @@ export default function AdminSidebar({ active }: { active?: string }) {
   return (
     <aside style={sidebarStyle}>
       <div style={logoBox}>
-        <div style={logoCircle}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M12 10c-3.5 0-7 2.5-7 6.5 0 3 2.5 5.5 7 5.5s7-2.5 7-5.5c0-4-3.5-6.5-7-6.5z"/></svg></div>
+        <BrandLogo size="small" />
         <div>
           <div style={{ fontSize: '16px', fontWeight: 900 }}>PetCare</div>
           <div style={{ fontSize: '9px', fontWeight: 800, color: '#8e52fc' }}>Smart Clinic</div>

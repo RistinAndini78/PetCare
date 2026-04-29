@@ -109,7 +109,7 @@ export default function AdminLogin() {
         .login-card { width: 100%; max-width: 420px; padding: 20px; animation: fadeIn 0.8s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .brand-header { text-align: center; margin-bottom: 32px; }
-        .logo-circle { width: 72px; height: 72px; background: #8e52fc; border-radius: 22px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; box-shadow: 0 12px 30px rgba(142, 82, 252, 0.25); color: white; }
+        .logo-box { width: 56px; height: 56px; background: #f4eeff; border-radius: 16px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; color: #8e52fc; box-shadow: 0 4px 12px rgba(142, 82, 252, 0.08); }
         .brand-name { font-size: 26px; font-weight: 800; color: #1a1a2e; letter-spacing: -0.5px; }
         .brand-tag { font-size: 10px; font-weight: 700; color: #8e52fc; text-transform: uppercase; letter-spacing: 2px; }
         .auth-panel { background: #ffffff; border-radius: 28px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04); border: 1px solid #f0f0f5; }
@@ -136,10 +136,10 @@ export default function AdminLogin() {
 
       <div className="login-card">
         <div className="brand-header">
-          <div className="logo-circle">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M10 3H6a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V10l-7-7z"/>
-              <path d="M14 3v7h7"/>
+          <div className="logo-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
           </div>
           <div className="brand-name">PetCare</div>
