@@ -475,7 +475,7 @@ export default function TambahEntriMedis() {
         .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
         .btn-secondary { background: #fff; border: 1.5px solid #eef0f7; padding: 14px 28px; border-radius: 16px; font-weight: 700; font-size: 14px; color: #a19db5; cursor: pointer; transition: 0.2s; font-family: inherit; }
         .btn-secondary:hover { background: #fdfbff; color: #1a1a1a; border-color: #d1c4e9; }
-        .btn-spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
+        .btn-spinner { wdth: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>

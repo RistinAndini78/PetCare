@@ -44,8 +44,7 @@ export default function TambahPemilik() {
       if (insertError) throw insertError;
 
       // 2. Persiapkan isi pesan WhatsApp
-      const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
-      const loginUrl = `${appUrl}/login/user`;
+      const loginUrl = "https://pet-care-steel.vercel.app/login/user";
       
       // Format pesan yang rapi dan profesional
       const message = `Halo Kak ${formData.fullName}! 👋\n\nSelamat! Akun PetCare Owner Portal Anda sudah berhasil dibuat oleh klinik.\n\nBerikut adalah data akses Anda:\n🔗 Link Login: ${loginUrl}\n📞 Nomor WA: ${formData.phone}\n🔑 Password Awal: ${passwordDefault}\n\nSetelah berhasil login, mohon segera mengganti password Anda demi keamanan. Terima kasih! 🐾`;
