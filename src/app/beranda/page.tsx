@@ -132,9 +132,9 @@ export default function Beranda() {
     );
   }
 
-  return (
+return (
     <div className="app bg-light">
-      <UserHeader name={userData?.full_name || 'Pelanggan'} />
+      <UserHeader title={userData?.full_name || 'Pelanggan'} subtitle="Halo," />
 
       <div className="scroll-content">
         <header className="welcome-meta">

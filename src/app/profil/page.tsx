@@ -162,10 +162,10 @@ export default function ProfilUser() {
     loadProfile();
   }, [router, supabase]);
 
-  return (
+return (
     <div style={S.app}>
       <div style={S.scroll}>
-        {/* Hero */}
+        {/* Hero - Custom Profile Section */}
         <div style={S.hero}>
           <div style={{ content: '', position: 'absolute', bottom: '-24px', left: '50%', transform: 'translateX(-50%)', width: '110%', height: '50px', background: 'var(--bg)', borderRadius: '50%' }} />
           <div style={S.avatar}>{ownerInitial}</div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import UserHeader from '@/components/UserHeader';
 import BottomNav from '@/components/BottomNav';
 import { createClient } from '@/utils/supabase/client';
 
@@ -45,7 +46,6 @@ export default function HewanSaya() {
     const target = new Date(nextDate);
     if (Number.isNaN(target.getTime())) return { vaccine: '-', status: 'Belum Ada Jadwal', urgent: false };
 
-    // hitung hari (dibulatkan ke atas, biar H-1 terasa pas)
     const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays <= 0) return { vaccine: 'Terlambat', status: 'Vaksin Terlambat', urgent: true };
     if (diffDays <= 7) return { vaccine: `H-${diffDays}`, status: 'Vaksin Segera', urgent: true };
@@ -63,7 +63,6 @@ export default function HewanSaya() {
           return;
         }
 
-        // 1) Ambil pasien milik owner
         const { data: patientRows, error: pErr } = await supabase
           .from('patients')
           .select('id, name, species, breed, gender, birth_date, owner_id')
@@ -73,7 +72,6 @@ export default function HewanSaya() {
 
         const ids = (patientRows || []).map((p: any) => p.id);
 
-        // 2) Ambil jadwal vaksin terdekat untuk tiap pasien
         const { data: scheduleRows } = ids.length
           ? await supabase
               .from('vaccination_schedules')
@@ -91,7 +89,6 @@ export default function HewanSaya() {
           }
         });
 
-        // 3) Ambil berat terakhir (opsional) dari medical_records
         const { data: recordRows } = ids.length
           ? await supabase
               .from('medical_records')
@@ -141,28 +138,11 @@ export default function HewanSaya() {
 
   return (
     <div className="app">
-      <header className="header">
-        <style jsx>{`
-          .header { background: var(--ink); padding: 50px 20px 22px; position: relative; overflow: hidden; flex-shrink: 0; }
-          .header::after { content: ''; position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); width: 110%; height: 44px; background: var(--bg); border-radius: 50%; }
-          .header-top { display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 1; }
-          .header-title { color: #fff; font-size: 18px; font-weight: 800; }
-          .header-sub { color: rgba(255,255,255,.5); font-size: 12px; margin-top: 2px; }
-          .h-btn { width: 38px; height: 38px; border-radius: 12px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.1); display: flex; align-items: center; justify-content: center; font-size: 17px; cursor: pointer; }
-        `}</style>
-        <div className="header-top">
-          <div>
-            <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Hewan Saya <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:.8 }}><ellipse cx="12" cy="10" r="3"/><path d="M7 22l5-3 5 3V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2z"/></svg>
-            </div>
-            <div className="header-sub">{headerCountText}</div>
-          </div>
-        </div>
-      </header>
+      <UserHeader title="Hewan Saya" />
 
       <div className="scroll">
         <style jsx>{`
-          .scroll { flex:1; overflow-y:auto; padding:0 20px 120px; }
+          .scroll { flex: 1; overflow-y: auto; padding: 20px 20px 100px; }
           .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; margin-top: 4px; }
           .section-title { font-size: 13px; font-weight: 800; color: var(--ink); }
           .section-link { font-size: 12px; color: var(--pr); font-weight: 800; cursor: pointer; }

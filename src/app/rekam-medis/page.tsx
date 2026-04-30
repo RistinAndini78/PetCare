@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import UserHeader from '@/components/UserHeader';
 import BottomNav from '@/components/BottomNav';
 import { createClient } from '@/utils/supabase/client';
 
@@ -151,23 +152,14 @@ export default function RekamMedisUser() {
     loadTimeline();
   }, [selectedPetId, supabase]);
 
-  return (
-    <div className="app">
-      <header className="header">
-        <style jsx>{`
-          .header { padding: 50px 20px 24px; background: linear-gradient(135deg, #1a0f2e 0%, #4a2b8e 100%); display: flex; align-items: center; gap: 16px; border-bottom: 2px solid rgba(255,255,255,0.05); position: sticky; top: 0; z-index: 100; color: #fff; }
-          .back-btn { width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; color: #fff; }
-          .header-title { font-size: 17px; font-weight: 800; }
-        `}</style>
-        <button className="back-btn" onClick={() => window.history.back()}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        </button>
-        <div className="header-title">Riwayat Medis</div>
-      </header>
+return (
+    <div className="app bg-white">
+      <UserHeader title="Riwayat Medis" />
 
       <div className="scroll">
          <style jsx>{`
-          .scroll { flex:1; overflow-y:auto; padding:0 0 100px; }
+          .bg-white { min-height: 100vh; display: flex; flex-direction: column; background: #fdfbff; }
+          .scroll { flex:1; overflow-y:auto; padding: 24px 0 100px; }
           .pet-summary { margin: 16px 20px; padding: 24px; background: #fff; border: 1.5px solid var(--border); border-radius: 24px; color: var(--text); display: flex; align-items: center; gap: 16px; box-shadow: 0 8px 30px rgba(142, 82, 252, 0.04); }
           .pet-photo { width: 56px; height: 56px; border-radius: 14px; background: var(--pr-pale); display: flex; align-items: center; justify-content: center; color: var(--pr); }
           .pet-pick { display: flex; gap: 10px; overflow-x: auto; padding: 2px 20px 6px; scrollbar-width: none; }

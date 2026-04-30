@@ -3,10 +3,11 @@
 import { useRouter } from 'next/navigation';
 
 interface UserHeaderProps {
-  name: string;
+  title: string;
+  subtitle?: string;
 }
 
-export default function UserHeader({ name }: UserHeaderProps) {
+export default function UserHeader({ title, subtitle }: UserHeaderProps) {
   const router = useRouter();
 
   return (
@@ -22,8 +23,25 @@ export default function UserHeader({ name }: UserHeaderProps) {
           position: relative;
           z-index: 10;
         }
-        .welcome-text { font-size: 24px; font-weight: 800; font-family: 'Poppins', sans-serif; letter-spacing: -0.5px; }
-        .welcome-text span { display: block; font-size: 14px; font-weight: 600; opacity: 0.8; margin-bottom: 2px; }
+        
+        .header-left {
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .header-subtitle { 
+          font-size: 14px; 
+          font-weight: 600; 
+          opacity: 0.9; 
+          margin-bottom: 2px; 
+        }
+        
+        .header-title { 
+          font-size: 24px; 
+          font-weight: 800; 
+          font-family: 'Poppins', sans-serif; 
+          letter-spacing: -0.5px; 
+        }
         
         .notif-btn {
           width: 48px; height: 48px; background: rgba(255, 255, 255, 0.15);
@@ -33,13 +51,15 @@ export default function UserHeader({ name }: UserHeaderProps) {
         .notif-btn:hover { background: rgba(255, 255, 255, 0.25); transform: translateY(-2px); }
         .red-dot {
           position: absolute; top: 12px; right: 12px; width: 8px; height: 8px;
-          background: #ff4757; border-radius: 50%; border: 2px solid rgba(255,255,255,0.8);
+          background: #ff4757; border-radius: 50%; border: 2px solid #b363f5;
         }
       `}</style>
-      <div>
-        <span>Halo,</span>
-        <div className="welcome-text">{name}!</div>
+      
+      <div className="header-left">
+        {subtitle && <span className="header-subtitle">{subtitle}</span>}
+        <div className="header-title">{title}</div>
       </div>
+      
       <div className="notif-btn" onClick={() => router.push('/notifikasi')}>
         <div className="red-dot"></div>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

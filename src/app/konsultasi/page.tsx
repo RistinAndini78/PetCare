@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, type ReactNode } from 'react';
+import UserHeader from '@/components/UserHeader';
 import BottomNav from '@/components/BottomNav';
 import { createClient } from '@/utils/supabase/client';
 
@@ -33,7 +34,7 @@ const buildWhatsappLink = (phoneE164WithoutPlus: string, doctorName: string) => 
   const phone = phoneE164WithoutPlus.replace(/[^\d]/g, '');
   const message =
     `Halo ${doctorName}, saya ingin konsultasi mengenai hewan peliharaan saya.\n` +
-    `Nama hewan: \nUmur: \nKeluhan/gejala: \nSejak kapan: \n`;
+    `Nama hewan: \nUmur: \nKeluhan/gejala: \n Sejak kapan: \n`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
@@ -49,11 +50,6 @@ export default function Konsultasi() {
   const fetchDokter = async () => {
     setLoading(true);
     try {
-      /**
-       * Ambil semua staf yang memiliki nomor WhatsApp dan role mengandung kata
-       * "dokter" (case-insensitive). Sesuaikan filter .ilike() jika penamaan
-       * role di database Anda berbeda.
-       */
       const { data, error } = await supabase
         .from('staf')
         .select('id, full_name, role, whatsapp, status')
@@ -67,8 +63,6 @@ export default function Konsultasi() {
         id: s.id,
         name: s.full_name,
         spec: s.role,
-        // Semua dokter aktif ditampilkan sebagai "online"; sesuaikan jika ada
-        // kolom ketersediaan real-time di database.
         status: 'online',
         whatsapp: s.whatsapp,
         ava: <UserIcon />,
@@ -84,61 +78,7 @@ export default function Konsultasi() {
 
   return (
     <div className="app">
-      <header className="header">
-        <style jsx>{`
-          .header {
-            background: var(--ink);
-            padding: 50px 20px 22px;
-            position: relative;
-            overflow: hidden;
-            flex-shrink: 0;
-          }
-          .header::after {
-            content: '';
-            position: absolute;
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 110%;
-            height: 44px;
-            background: var(--bg);
-            border-radius: 50%;
-          }
-          .header-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: relative;
-            z-index: 1;
-          }
-          .header-title {
-            color: #fff;
-            font-size: 18px;
-            font-weight: 800;
-          }
-          .header-sub {
-            color: rgba(255, 255, 255, 0.55);
-            font-size: 12px;
-            margin-top: 2px;
-            line-height: 1.4;
-          }
-        `}</style>
-        <div className="header-top">
-          <div>
-            <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Konsultasi
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            </div>
-            <div className="header-sub">
-              Hubungi dokter hewan melalui WhatsApp untuk konsultasi cepat.
-              <br />
-              Klik tombol di bawah untuk langsung membuka chat.
-            </div>
-          </div>
-        </div>
-      </header>
+      <UserHeader title="Konsultasi" />
 
       <div className="doctor-list">
         <style jsx>{`
@@ -146,6 +86,16 @@ export default function Konsultasi() {
             flex: 1;
             overflow-y: auto;
             padding: 16px 20px 120px;
+          }
+          .note {
+            background: rgba(29, 185, 84, 0.08);
+            border: 1.5px solid rgba(29, 185, 84, 0.22);
+            color: var(--ink);
+            border-radius: 14px;
+            padding: 12px 14px;
+            font-size: 12px;
+            line-height: 1.5;
+            margin-bottom: 12px;
           }
           .doctor-card {
             background: var(--white);
@@ -235,16 +185,6 @@ export default function Konsultasi() {
             font-weight: 700;
             color: var(--muted);
             text-align: right;
-          }
-          .note {
-            background: rgba(29, 185, 84, 0.08);
-            border: 1.5px solid rgba(29, 185, 84, 0.22);
-            color: var(--ink);
-            border-radius: 14px;
-            padding: 12px 14px;
-            font-size: 12px;
-            line-height: 1.5;
-            margin-bottom: 12px;
           }
           .empty-state {
             text-align: center;
