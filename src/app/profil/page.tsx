@@ -308,7 +308,7 @@ return (
           <div style={S.list}>
             <div style={S.row} onClick={() => setModal({ open: true, title: 'Tentang PetCare', content: 'Platform kesehatan hewan cerdas terintegrasi AI untuk masa depan klinik hewan Indonesia.' })}>
               <div style={S.icon('#f0ecfb')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6c5ce7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></div>
-              <div style={S.label}>Tentang PetCare<span style={S.sub}>Versi 1.0 · PKM-KC 2026</span></div>
+              <div style={S.label}>Tentang PetCare<span style={S.sub}>Versi 1.0 · PetCare 2026</span></div>
               <span style={S.arrow}>›</span>
             </div>
             <Link href="/faq" style={S.rowLast}>

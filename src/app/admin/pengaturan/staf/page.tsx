@@ -51,6 +51,22 @@ export default function AdminStaf() {
     }
   };
 
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus staf "${name}"?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('staf').delete().eq('id', id);
+      if (error) throw error;
+      
+      setStaffList(prev => prev.filter(s => s.id !== id));
+    } catch (error: any) {
+      console.error("Gagal menghapus staf:", error.message);
+      alert("Gagal menghapus staf: " + error.message);
+    }
+  };
+
   return (
     <div className="admin-body">
       <AdminSidebar active="pengaturan" />
@@ -76,18 +92,19 @@ export default function AdminStaf() {
                       <th>NAMA</th>
                       <th>PERAN</th>
                       <th>STATUS</th>
+                      <th>AKSI</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={3} style={{ textAlign: 'center', padding: '40px', color: '#a19db5' }}>
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: '#a19db5' }}>
                           Memuat data staf...
                         </td>
                       </tr>
                     ) : staffList.length === 0 ? (
                       <tr>
-                        <td colSpan={3} style={{ textAlign: 'center', padding: '40px', color: '#a19db5' }}>
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: '#a19db5' }}>
                           Tidak ada staf yang terdaftar.
                         </td>
                       </tr>
@@ -101,6 +118,14 @@ export default function AdminStaf() {
                             <span className={s.status === 'Aktif' ? 'text-green' : 'text-val'}>
                               {s.status}
                             </span>
+                          </td>
+                          <td>
+                            <button 
+                              onClick={() => handleDelete(s.id, s.full_name)}
+                              className="btn-delete"
+                            >
+                              Hapus
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -135,6 +160,9 @@ export default function AdminStaf() {
         .fw-bold { font-weight: 700; color: #1a1a1a; }
         .text-val { font-weight: 600; color: #666; }
         .text-green { color: #2ed573; font-weight: 700; }
+        
+        .btn-delete { background: #ffebee; color: #ff4757; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .btn-delete:hover { background: #ff4757; color: #fff; }
       `}</style>
     </div>
   );

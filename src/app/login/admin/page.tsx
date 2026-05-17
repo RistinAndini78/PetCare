@@ -9,23 +9,11 @@ export default function AdminLogin() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [activeProfile, setActiveProfile] = useState('Admin');
-  const [emailInput, setEmailInput] = useState('');
+  const [emailInput, setEmailInput] = useState('admin@klinik.com');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
-  const profiles = [
-    { id: 'Admin', name: 'Admin Utama', ava: 'A', bg: 'linear-gradient(135deg, #1e1e2f 0%, #11111d 100%)' },
-    { id: 'Staf', name: 'Dokter / Staf', ava: 'D', bg: 'linear-gradient(135deg, #8e52fc 0%, #6e36d4 100%)' },
-  ];
-
-  const selProfile = (profile: any) => {
-    setActiveProfile(profile.id);
-    setErrorMsg('');
-    setPass('');
-  };
 
   const handleLogin = async () => {
     if (!pass) {
@@ -33,11 +21,8 @@ export default function AdminLogin() {
       return;
     }
 
-    // PENTING: Ganti 'admin@klinik.com' dengan email asli Admin Utama milikmu
-    const loginEmail = activeProfile === 'Admin' ? 'admin@klinik.com' : emailInput;
-
-    if (activeProfile === 'Staf' && !loginEmail) {
-      setErrorMsg('Harap masukkan email staf!');
+    if (!emailInput) {
+      setErrorMsg('Harap masukkan email!');
       return;
     }
 
@@ -46,7 +31,7 @@ export default function AdminLogin() {
 
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: loginEmail,
+        email: emailInput,
         password: pass,
       });
 
@@ -54,38 +39,9 @@ export default function AdminLogin() {
 
       let sessionData = {
         id: authData.user.id,
-        name: '',
-        role: ''
+        name: 'Admin Utama',
+        role: 'admin'
       };
-
-      if (activeProfile === 'Admin') {
-        sessionData.name = 'Admin Utama';
-        sessionData.role = 'admin';
-      } else {
-        const { data: stafData, error: stafError } = await supabase
-          .from('staf')
-          .select('full_name, role')
-          .eq('id', authData.user.id)
-          .single();
-
-        if (stafError || !stafData) {
-          await supabase.auth.signOut();
-          throw new Error('Akses ditolak. Anda tidak terdaftar sebagai staf.');
-        }
-
-        sessionData.name = stafData.full_name;
-        
-        // --- PERBAIKAN LOGIKA ROLE ADA DI SINI ---
-        const roleDariDB = stafData.role.toLowerCase();
-        
-        // Jika jabatannya mengandung kata "dokter" (misal: "Dokter Hewan", "Dokter Klinik")
-        if (roleDariDB.includes('dokter')) {
-          sessionData.role = 'dokter'; // Jadikan paten 'dokter'
-        } else {
-          sessionData.role = roleDariDB; // Sisanya biarkan asli (misal: 'resepsionis')
-        }
-        // -----------------------------------------
-      }
 
       localStorage.setItem('petcare_user', JSON.stringify(sessionData));
       
@@ -115,12 +71,6 @@ export default function AdminLogin() {
         .auth-panel { background: #ffffff; border-radius: 28px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04); border: 1px solid #f0f0f5; }
         .title { font-size: 22px; font-weight: 800; color: #1a1a2e; margin-bottom: 6px; text-align: center; }
         .subtitle { font-size: 14px; color: #7f8c9b; text-align: center; margin-bottom: 30px; }
-        .profile-list { display: flex; gap: 24px; margin-bottom: 30px; justify-content: center; }
-        .p-box { cursor: pointer; text-align: center; transition: 0.3s; width: 85px; }
-        .p-ava { width: 56px; height: 56px; border-radius: 18px; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 20px; transition: 0.3s; border: 3px solid transparent; }
-        .p-name { font-size: 11px; font-weight: 700; color: #94a3b8; }
-        .p-box.active .p-ava { transform: scale(1.1); box-shadow: 0 8px 15px rgba(142, 82, 252, 0.3); border-color: #fff; outline: 2px solid #8e52fc; }
-        .p-box.active .p-name { color: #8e52fc; font-weight: 800; }
         .input-group { margin-bottom: 20px; }
         .label { display: block; font-size: 11px; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
         .input-rel input { width: 100%; padding: 14px 16px; border: 1.5px solid #edf2f7; border-radius: 12px; font-size: 14px; font-weight: 600; background: #fcfdfe; outline: none; transition: 0.2s; }
@@ -147,43 +97,21 @@ export default function AdminLogin() {
         </div>
 
         <div className="auth-panel">
-          <h1 className="title">Halo Tim!</h1>
-          <p className="subtitle">Pilih profil untuk masuk ke sistem</p>
-
-          <div className="profile-list">
-            {profiles.map((p) => (
-              <div 
-                key={p.id} 
-                className={`p-box ${activeProfile === p.id ? 'active' : ''}`}
-                onClick={() => selProfile(p)}
-              >
-                <div className="p-ava" style={{ background: p.bg }}>{p.ava}</div>
-                <div className="p-name">{p.name}</div>
-              </div>
-            ))}
-          </div>
+          <h1 className="title">Halo Admin!</h1>
+          <p className="subtitle">Silakan masuk untuk mengelola klinik</p>
 
           {errorMsg && <div className="error-msg">{errorMsg}</div>}
 
           <div className="input-group">
             <label className="label">Email Login</label>
             <div className="input-rel">
-              {activeProfile === 'Admin' ? (
-                <input 
-                  type="text" 
-                  value="admin@klinik.com" 
-                  readOnly 
-                  style={{ backgroundColor: '#f3f4f6', color: '#64748b', cursor: 'not-allowed' }} 
-                />
-              ) : (
-                <input 
-                  type="email" 
-                  value={emailInput} 
-                  onChange={(e) => setEmailInput(e.target.value)} 
-                  placeholder="Masukkan email staf..." 
-                  autoFocus
-                />
-              )}
+              <input 
+                type="email" 
+                value={emailInput} 
+                onChange={(e) => setEmailInput(e.target.value)} 
+                placeholder="admin@klinik.com" 
+                autoFocus
+              />
             </div>
           </div>
 

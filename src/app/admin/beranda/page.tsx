@@ -12,15 +12,13 @@ import { createClient } from '@/utils/supabase/client';
 export default function AdminBeranda() {
   const supabase = createClient();
 
-  // State Identitas, Role, & Loading
+  // State Identitas & Loading
   const [adminName, setAdminName] = useState('Staf Klinik');
-  const [userRole, setUserRole] = useState('admin');
   const [loading, setLoading] = useState(true);
 
   // State Statistik Utama
   const [totalPatients, setTotalPatients] = useState(0);
-  const [dueReminders, setDueReminders] = useState(0); // Untuk Admin (Jatuh Tempo / Overdue)
-  const [upcomingVaccines, setUpcomingVaccines] = useState(0); // BARU: Untuk Dokter (Vaksin 7 Hari ke Depan)
+  const [dueReminders, setDueReminders] = useState(0); 
   
 // State Grafik & List Data
   const [chartHeights, setChartHeights] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
@@ -62,10 +60,6 @@ export default function AdminBeranda() {
         if (error) throw error;
 
         // 3. Hitung jumlah kunjungan dan ubah jadi persentase grafik
-        // Asumsi: 10 kunjungan = 100% tinggi bar grafik. 
-        // (Bisa diganti angka 10-nya kalau target kunjungan harianmu lebih besar)
-        const MAX_KUNJUNGAN = 10; 
-
         const counts = dateStrings.map(dateStr => 
           records?.filter(r => r.treatment_date === dateStr).length || 0
         );
@@ -83,7 +77,7 @@ export default function AdminBeranda() {
     };
 
     fetchStatistikKunjungan();
-  }, [supabase]); // Pastikan supabase ada di dalam dependency array jika error eslint
+  }, [supabase]); 
   
   useEffect(() => {
     // Pastikan sesi Supabase masih aktif
@@ -102,13 +96,12 @@ export default function AdminBeranda() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // 1. Ambil Nama Admin & ROLE dari Local Storage
+      // 1. Ambil Nama Admin dari Local Storage
       const storedUser = localStorage.getItem('petcare_user');
       if (storedUser) {
         try {
           const user = JSON.parse(storedUser);
           setAdminName(user.name || 'Staf Klinik');
-          setUserRole(user.role ? user.role.toLowerCase() : 'admin'); 
         } catch (e) { console.error("Error parse user", e); }
       }
 
@@ -134,7 +127,7 @@ export default function AdminBeranda() {
         })));
       }
 
-      // 3. Logika Reminder (Jatuh Tempo & Mendekat)
+      // 3. Logika Reminder (Jatuh Tempo)
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
       
@@ -145,17 +138,9 @@ export default function AdminBeranda() {
         .order('next_vaccine_date', { ascending: true });
 
       if (schedules) {
-        // Logika Admin: Hitung yang HARI INI atau SUDAH LEWAT (Jatuh Tempo mendesak)
+        // Logika Admin: Hitung yang HARI INI atau SUDAH LEWAT
         const dueCount = schedules.filter(s => s.next_vaccine_date <= todayStr).length;
         setDueReminders(dueCount);
-
-        // Logika Dokter: Hitung yang jadwalnya dalam 7 HARI KE DEPAN
-        const upcomingCount = schedules.filter(s => {
-          const targetDate = new Date(s.next_vaccine_date);
-          const diffDays = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-          return diffDays >= 0 && diffDays <= 7;
-        }).length;
-        setUpcomingVaccines(upcomingCount);
 
         // List 5 Pengingat terdekat untuk ditampilkan di tabel bawah
         const formattedReminders = schedules.slice(0, 5).map(s => {
@@ -172,42 +157,6 @@ export default function AdminBeranda() {
         setLiveReminders(formattedReminders);
       }
 
-      // 4. LOGIKA GRAFIK DINAMIS (Aktivitas 7 Hari Terakhir)
-      const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-      const counts = [0, 0, 0, 0, 0, 0, 0];
-      const labels = [];
-      const normalizeYmd = (value: any) => {
-        if (!value) return '';
-        return String(value).slice(0, 10);
-      };
-
-      const startDate = new Date();
-      startDate.setDate(now.getDate() - 6);
-      startDate.setHours(0, 0, 0, 0); 
-
-      const { data: recentVisits, error: visitError } = await supabase
-        .from('medical_records')
-        .select('treatment_date')
-        .gte('treatment_date', startDate.toISOString().split('T')[0])
-        .lte('treatment_date', todayStr);
-
-      if (visitError) throw visitError;
-
-      for (let i = 0; i < 7; i++) {
-        const targetDay = new Date(startDate);
-        targetDay.setDate(startDate.getDate() + i);
-        const targetStr = targetDay.toISOString().split('T')[0];
-
-        labels.push(dayNames[targetDay.getDay()]);
-
-        if (recentVisits) {
-          counts[i] = recentVisits.filter(v => normalizeYmd(v.treatment_date) === targetStr).length;
-        }
-      }
-
-      const maxVal = Math.max(...counts, 1); 
-      const calculatedHeights = counts.map(c => Math.round((c / maxVal) * 100));
-
     } catch (error) {
       console.error("Dashboard error:", error);
     } finally {
@@ -216,78 +165,51 @@ export default function AdminBeranda() {
   };
 
   return (
-    // Tambahkan class mode warna agar lebih kentara perbedaannya
-    <div className={`admin-body ${userRole === 'dokter' ? 'dokter-mode' : 'admin-mode'}`}>
+    <div className="admin-body admin-mode">
       <AdminSidebar active="beranda" />
 
       <main className="main-content">
-        <AdminTopbar title={`Dashboard ${userRole === 'dokter' ? 'Medis' : 'Operasional'}`} name={adminName} />
+        <AdminTopbar title="Dashboard Operasional" name={adminName} />
 
         <div className="scroll-area">
           <div className="metrics-grid">
-            {/* Metrik 1: Tampil untuk Admin & Dokter */}
             <div className="m-card m-purple">
               <span className="m-label">Total Pasien</span>
               <div className="m-val">{loading ? '...' : totalPatients}</div>
               <span className="m-sub">Tercatat di database</span>
             </div>
 
-            {/* Metrik 2: HANYA tampil untuk ADMIN */}
-            {userRole !== 'dokter' && (
-              <div className="m-card m-red">
-                <span className="m-label">Jatuh Tempo</span>
-                <div className="m-val">{loading ? '...' : dueReminders}</div>
-                <span className="m-sub">Vaksinasi mendesak / lewat</span>
-              </div>
-            )}
+            <div className="m-card m-red">
+              <span className="m-label">Jatuh Tempo</span>
+              <div className="m-val">{loading ? '...' : dueReminders}</div>
+              <span className="m-sub">Vaksinasi mendesak / lewat</span>
+            </div>
 
-            {/* Metrik 2 Alternatif: HANYA tampil untuk DOKTER (Vaksinasi Mendekat) */}
-            {userRole === 'dokter' && (
-              <div className="m-card" style={{ borderTop: '4px solid #2ed573' }}>
-                <span className="m-label">Vaksinasi Terdekat</span>
-                <div className="m-val" style={{ color: '#2ed573' }}>{loading ? '...' : upcomingVaccines}</div>
-                <span className="m-sub">Jadwal dalam 7 hari ke depan</span>
-              </div>
-            )}
-
-            {/* Metrik 3: Grafik tampil untuk semuanya */}
             <div className="m-card m-green chart-col">
               <span className="m-label">Kunjungan (7 Hari Terakhir)</span>
               <div className="mini-chart">
-  {chartHeights.map((h, i) => (
-    <div key={i} className="chart-item">
-      {/* PERHATIKAN BARIS STYLE DI BAWAH INI */}
-      <div 
-        className="bar" 
-        style={{ height: `${h}%`, transition: 'height 1s ease' }}
-        title={`${chartCounts[i]} Kunjungan`}
-      ></div>
-      <span className="label">{chartLabels[i]}</span>
-    </div>
-  ))}
-</div>
+                {chartHeights.map((h, i) => (
+                  <div key={i} className="chart-item">
+                    <div 
+                      className="bar" 
+                      style={{ height: `${h}%`, transition: 'height 1s ease' }}
+                      title={`${chartCounts[i]} Kunjungan`}
+                    ></div>
+                    <span className="label">{chartLabels[i]}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* TOMBOL AKSI UTAMA DIBEDAKAN BERDASARKAN ROLE */}
-          {userRole === 'dokter' ? (
-            <Link href="/admin/rekam-medis/tambah" className="banner-btn" style={{ background: 'linear-gradient(135deg, #2ed573 0%, #20bf6b 100%)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-              </svg>
-              <span>Mulai Pemeriksaan (Input Rekam Medis)</span>
-            </Link>
-          ) : (
-            <Link href="/admin/pasien/tambah" className="banner-btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
-              </svg>
-              <span>Daftarkan Pasien Baru (Front Desk)</span>
-            </Link>
-          )}
+          <Link href="/admin/pasien/tambah" className="banner-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+            </svg>
+            <span>Daftarkan Pasien Baru (Front Desk)</span>
+          </Link>
 
           <div className="dashboard-flex">
-            {/* Tabel Pasien Baru: Tampil untuk semuanya */}
             <div className="data-card">
               <div className="card-header-dashboard">
                 <h3>Pasien Baru Terdaftar</h3>
@@ -331,7 +253,6 @@ export default function AdminBeranda() {
               </div>
             </div>
 
-            {/* List Reminder Vaksin */}
             <div className="ai-card">
               <div className="ai-head">
                 <div className="ai-title">Jadwal Vaksinasi</div>
@@ -353,23 +274,16 @@ export default function AdminBeranda() {
                 )}
               </div>
               
-              {/* Tombol Kirim WA HANYA muncul untuk Admin */}
-              {userRole !== 'dokter' && (
-                <Link href="/admin/reminder" className="ai-btn-primary" style={{textDecoration:'none'}}>
-                  <span>Buka Portal WhatsApp</span>
-                </Link>
-              )}
+              <Link href="/admin/reminder" className="ai-btn-primary" style={{textDecoration:'none'}}>
+                <span>Buka Portal WhatsApp</span>
+              </Link>
             </div>
           </div>
         </div>
       </main>
 
       <style jsx global>{`
-        /* STYLE TAMBAHAN UNTUK PEMBEDA MODE WARNA */
         .admin-mode .main-content { border-top: 4px solid #8e52fc; }
-        .dokter-mode .main-content { border-top: 4px solid #2ed573; }
-
-        /* CSS BAWAAN KAMU */
         .admin-body { display: flex; min-height: 100vh; background: #f8f9fd; font-family: 'Plus Jakarta Sans', sans-serif; }
         .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; box-sizing: border-box; }
         .scroll-area { padding: 32px; overflow-y: auto; flex: 1; }

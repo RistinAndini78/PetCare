@@ -133,7 +133,6 @@ export default function Reminder() {
 
   const stats = [
     { label: 'Total Pesan Terkirim', value: logs.length, sub: 'Log tercatat', type: 'yellow' as const },
-    { label: 'Pending Task', value: 0, sub: 'Menunggu antrean', type: 'yellow' as const },
   ];
 
   return (
@@ -143,31 +142,32 @@ export default function Reminder() {
         <AdminTopbar title="Pesan Pengingat" name="Admin PetCare" />
 
         <div className="content">
-          <div className="stats-grid">
-            {stats.map((s, i) => (
-              <StatCard key={i} label={s.label} value={s.value} sub={s.sub} type={s.type} />
-            ))}
-          </div>
-
-          <div className="ai-trigger-card">
-            <div className="ai-info">
-               <h3>🚀 Jalankan </h3>
-               <p>Klik tombol untuk memicu sistem mengecek jadwal vaksinasi beberapa ke depan dan mengirim pesan otomatis.</p>
+          <div className="reminder-top-grid">
+            <div className="stats-box">
+              {stats.map((s, i) => (
+                <StatCard key={i} label={s.label} value={s.value} sub={s.sub} type={s.type} />
+              ))}
             </div>
-            <button 
-              className={`btn-ai-action ${isProcessing ? 'loading' : ''}`} 
-              onClick={runReminder}
-              disabled={isProcessing}
-            >
-              {isProcessing ? '🤖 Sedang Memproses...' : 'Mulai Pengiriman Otomatis'}
-            </button>
+
+            <div className="ai-trigger-card-compact">
+              <div className="ai-info">
+                 <h3>🚀 Jalankan Otomatis</h3>
+                 <p>Kirim pesan pengingat vaksinasi ke WhatsApp pasien.</p>
+              </div>
+              <button 
+                className={`btn-ai-action ${isProcessing ? 'loading' : ''}`} 
+                onClick={runReminder}
+                disabled={isProcessing}
+              >
+                {isProcessing ? '🤖 Memproses...' : 'Mulai Pengiriman'}
+              </button>
+            </div>
           </div>
 
           <div className="main-grid">
             <div className="card">
               <div className="card-head">
                 <div className="card-title">Log Reminder Terkirim</div>
-                <button className="btn btn-outline" onClick={() => window.print()}>Export</button>
               </div>
               <div className="table-wrapper">
                 <table>
@@ -221,19 +221,24 @@ export default function Reminder() {
         .admin-body { display: flex; min-height: 100vh; background: #f8f9fd; font-family: 'Plus Jakarta Sans', sans-serif; }
         .main-admin { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 32px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 20px; margin-bottom: 24px; }
         
-        .ai-trigger-card { 
-          background: #0c071b; border-radius: 24px; padding: 28px 40px; 
-          margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; color: #fff;
+        .reminder-top-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 24px; }
+        .stats-box { display: flex; flex-direction: column; }
+        
+        .ai-trigger-card-compact { 
+          background: #0c071b; border-radius: 24px; padding: 24px 32px; 
+          display: flex; justify-content: space-between; align-items: center; color: #fff;
+          border: 1px solid #1e1b2e;
         }
-        .ai-info h3 { margin: 0; font-size: 18px; color: #d463f2; }
-        .ai-info p { margin: 8px 0 0; font-size: 13px; color: #a19db5; max-width: 500px; }
+        .ai-info h3 { margin: 0; font-size: 16px; color: #d463f2; }
+        .ai-info p { margin: 4px 0 0; font-size: 12px; color: #a19db5; max-width: 320px; }
         
         .btn-ai-action { 
           background: linear-gradient(135deg, #8e52fc 0%, #6c31e0 100%); 
-          color: white; border: none; padding: 16px 32px; border-radius: 16px; font-weight: 800; cursor: pointer;
+          color: white; border: none; padding: 12px 24px; border-radius: 14px; font-weight: 800; cursor: pointer;
+          font-size: 13px; transition: transform 0.2s;
         }
+        .btn-ai-action:hover { transform: translateY(-2px); }
         .btn-ai-action.loading { opacity: 0.7; cursor: wait; }
 
         .main-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }

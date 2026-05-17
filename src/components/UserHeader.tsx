@@ -51,7 +51,7 @@ export default function UserHeader({ title, subtitle }: UserHeaderProps) {
         .notif-btn:hover { background: rgba(255, 255, 255, 0.25); transform: translateY(-2px); }
         .red-dot {
           position: absolute; top: 12px; right: 12px; width: 8px; height: 8px;
-          background: #ff4757; border-radius: 50%; border: 2px solid #b363f5;
+          background: border: 2px solid #b363f5;
         }
       `}</style>
       
