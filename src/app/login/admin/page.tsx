@@ -134,9 +134,6 @@ export default function AdminLogin() {
             {isLoading ? 'Mengautentikasi...' : 'Masuk Dashboard'}
           </button>
 
-          <div className="footer">
-            Bukan staf? <Link href="/login/user" className="link">Masuk sebagai Pemilik</Link>
-          </div>
         </div>
       </div>
     </div>

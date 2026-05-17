@@ -23,73 +23,110 @@ export async function GET() {
       .maybeSingle();
 
     if (settingsError) throw settingsError;
-    if (!settings || !settings.h3_active) {
-      return NextResponse.json({ message: "Pengingat H-3 nonaktif." });
+    if (!settings) return NextResponse.json({ error: "Settings not found" }, { status: 404 });
+
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+
+    // 1. Definisikan Target Tanggal & Pesan
+    const targets = [];
+    
+    // Reminder H-7
+    if (settings.h7_active) {
+      const d7 = new Date(); d7.setDate(d7.getDate() + 7);
+      targets.push({ date: d7.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }), type: 'h7' });
+    }
+    // Reminder H-3
+    if (settings.h3_active) {
+      const d3 = new Date(); d3.setDate(d3.getDate() + 3);
+      targets.push({ date: d3.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }), type: 'h3' });
+    }
+    // Reminder H-1
+    if (settings.h1_active) {
+      const d1 = new Date(); d1.setDate(d1.getDate() + 1);
+      targets.push({ date: d1.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }), type: 'h1' });
     }
 
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + 3);
-    const dateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+    let totalSent = 0;
 
-    const { data: targets, error: targetError } = await supabase
-      .from('vaccination_schedules')
-      .select('*, patients(name, owners(full_name, phone))')
-      .eq('next_vaccine_date', dateStr)
-      .eq('status', 'scheduled');
+    // A. PROSES REMINDER TERJADWAL (H-7, H-3, H-1)
+    for (const t of targets) {
+      const { data: schedules } = await supabase
+        .from('vaccination_schedules')
+        .select('*, patients(name, owners(full_name, phone))')
+        .eq('next_vaccine_date', t.date)
+        .eq('status', 'scheduled');
 
-    if (targetError) throw targetError;
-    if (!targets || targets.length === 0) {
-      return NextResponse.json({ success: true, sent: 0, message: `Tidak ada jadwal untuk ${dateStr}` });
-    }
-
-    let sentCount = 0;
-
-    for (const item of (targets as any[])) {
-      const namaPemilik = item.patients?.owners?.full_name || "Pemilik";
-      const namaHewan = item.patients?.name || "Hewan";
-      const jenisVaksin = item.vaccine_name;
-      let phone = item.patients?.owners?.phone;
-
-      if (!phone) continue;
-      phone = phone.replace(/^0/, '62');
-
-      const pesan = `Halo Kak ${namaPemilik}! 🐾\n\nIni pengingat dari Klinik PetCare. Si *${namaHewan}* dijadwalkan untuk vaksin *${jenisVaksin}* pada tanggal ${dateStr} (3 hari lagi).`;
-
-      // 6. Request menggunakan Axios dengan paksaan POST
-      try {
-        const response = await axios({
-          method: 'post',
-          url: `${evolutionUrl}/message/sendText/${instanceName}`,
-          data: {
-            number: phone,
-            text: pesan
-          },
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': apiKey
-          },
-          // Mencegah redirect otomatis yang sering mengubah POST menjadi GET
-          maxRedirects: 0 
-        });
-
-        if (response.status === 200 || response.status === 201) {
-          sentCount++;
-          await supabase.from('reminder_logs').insert({
-            nama_hewan: namaHewan,
-            nama_pemilik: namaPemilik,
-            jenis_vaksin: jenisVaksin,
-            status: 'Terkirim'
-          });
+      if (schedules) {
+        for (const item of (schedules as any[])) {
+          const sent = await sendWA(item, t.type, t.date, evolutionUrl, instanceName, apiKey, supabase);
+          if (sent) totalSent++;
         }
-      } catch (axiosError: any) {
-        // Logging detail error untuk melihat apakah server menolak karena protokol atau API Key
-        console.error(`❌ Gagal kirim ke ${phone}:`, axiosError.response?.data || axiosError.message);
       }
     }
 
-    return NextResponse.json({ success: true, sent: sentCount });
+    // B. PROSES VAKSIN TERLAMBAT (LATE)
+    if (settings.late_active) {
+      const { data: lateSchedules } = await supabase
+        .from('vaccination_schedules')
+        .select('*, patients(name, owners(full_name, phone))')
+        .lt('next_vaccine_date', todayStr)
+        .eq('status', 'scheduled');
+
+      if (lateSchedules) {
+        for (const item of (lateSchedules as any[])) {
+          const sent = await sendWA(item, 'late', item.next_vaccine_date, evolutionUrl, instanceName, apiKey, supabase);
+          if (sent) totalSent++;
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, sent: totalSent });
   } catch (err: any) {
     console.error("🔥 Error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
+}
+
+async function sendWA(item: any, type: string, date: string, evolutionUrl: string, instanceName: string, apiKey: string, supabase: any) {
+  const namaPemilik = item.patients?.owners?.full_name || "Pemilik";
+  const namaHewan = item.patients?.name || "Hewan";
+  const jenisVaksin = item.vaccine_name;
+  let phone = item.patients?.owners?.phone;
+
+  if (!phone) return false;
+  phone = phone.replace(/^0/, '62');
+
+  let pesan = "";
+  if (type === 'h7') pesan = `Halo Kak ${namaPemilik}! 🐾\n\nSi *${namaHewan}* ada jadwal vaksin *${jenisVaksin}* seminggu lagi (tgl ${date}). Yuk persiapkan kesehatannya!`;
+  if (type === 'h3') pesan = `Halo Kak ${namaPemilik}! 🐾\n\nPengingat H-3: *${namaHewan}* dijadwalkan vaksin *${jenisVaksin}* pada tanggal ${date}.`;
+  if (type === 'h1') pesan = `Halo Kak ${namaPemilik}! 🐾\n\nBesok adalah jadwal vaksin *${jenisVaksin}* untuk *${namaHewan}*. Jangan sampai terlewat ya!`;
+  
+  // LOGIKA PESAN TERLAMBAT (URGENT)
+  if (type === 'late') {
+    pesan = `⚠️ *PENGINGAT PENTING* ⚠️\n\nHalo Kak ${namaPemilik}, jadwal vaksinasi *${jenisVaksin}* untuk *${namaHewan}* telah *TERLEWAT* (seharusnya tgl ${date}).\n\nDemi menjaga kekebalan tubuh peliharaan Anda, mohon segera datang ke Klinik PetCare untuk dilakukan vaksinasi susulan.`;
+  }
+
+  try {
+    const response = await axios({
+      method: 'post',
+      url: `${evolutionUrl}/message/sendText/${instanceName}`,
+      data: { number: phone, text: pesan },
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      maxRedirects: 0 
+    });
+
+    if (response.status === 200 || response.status === 201) {
+      await supabase.from('reminder_logs').insert({
+        nama_hewan: namaHewan,
+        nama_pemilik: namaPemilik,
+        jenis_vaksin: jenisVaksin,
+        status: 'Terkirim'
+      });
+      return true;
+    }
+  } catch (error) {
+    return false;
+  }
+  return false;
 }

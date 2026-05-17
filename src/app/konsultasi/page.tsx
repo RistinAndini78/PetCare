@@ -55,7 +55,7 @@ export default function Konsultasi() {
         .select('id, full_name, role, whatsapp, status')
         .not('whatsapp', 'is', null)
         .ilike('role', '%dokter%')
-        .eq('status', 'Aktif');
+        .in('status', ['Aktif', 'Sibuk']);
 
       if (error) throw error;
 
@@ -63,7 +63,7 @@ export default function Konsultasi() {
         id: s.id,
         name: s.full_name,
         spec: s.role,
-        status: 'online',
+        status: s.status === 'Aktif' ? 'online' : 'busy',
         whatsapp: s.whatsapp,
         ava: <UserIcon />,
       }));

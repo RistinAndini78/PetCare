@@ -178,12 +178,6 @@ export default function UserLogin() {
           <div className="akt-link" style={{ lineHeight: 1.6 }}>
             Akun pemilik <b>dibuat oleh klinik</b>. Jika belum bisa login, silakan hubungi admin klinik untuk didaftarkan.
           </div>
-
-          <div className="divider"></div>
-
-          <div className="switch-link">
-            Staf Klinik? <Link href="/login/admin">Masuk Dashboard</Link>
-          </div>
         </form>
       </div>
     </div>

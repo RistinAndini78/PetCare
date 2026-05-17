@@ -1,11 +1,37 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopbar from '@/components/AdminTopbar';
 import SettingsSidebar from '@/components/SettingsSidebar';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client';
 
 export default function AdminOperasional() {
+  const supabase = createClient();
+  const [hours, setHours] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHours = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('clinic_hours')
+          .select('*')
+          .order('id', { ascending: true });
+        
+        if (error) throw error;
+        setHours(data || []);
+      } catch (err) {
+        console.error('Error fetching hours:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHours();
+  }, [supabase]);
+
   return (
     <div className="admin-body">
       <AdminSidebar active="pengaturan" />
@@ -22,18 +48,18 @@ export default function AdminOperasional() {
               </div>
               <div className="card-body">
                 <div className="schedule-list">
-                  <div className="s-row">
-                    <span className="s-day">Senin - Jumat</span>
-                    <span className="s-time">08:00 AM - 08:00 PM</span>
-                  </div>
-                  <div className="s-row">
-                    <span className="s-day">Sabtu</span>
-                    <span className="s-time">09:00 AM - 06:00 PM</span>
-                  </div>
-                  <div className="s-row">
-                    <span className="s-day">Minggu</span>
-                    <span className="s-time">09:00 AM - 06:00 PM</span>
-                  </div>
+                  {loading ? (
+                    <p style={{ textAlign: 'center', color: '#a19db5' }}>Memuat jadwal...</p>
+                  ) : hours.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#a19db5' }}>Jadwal belum diatur.</p>
+                  ) : (
+                    hours.map((h) => (
+                      <div key={h.id} className="s-row">
+                        <span className="s-day">{h.day_label}</span>
+                        <span className="s-time">{h.open_time} - {h.close_time}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
                 
                 <Link href="/admin/operasional/edit" className="edit-link-btn">

@@ -16,7 +16,7 @@ export default function FAQ() {
     },
     {
       q: 'Bagaimana cara booking dokter?',
-      a: 'Fitur booking saat ini telah diintegrasikan langsung ke dalam layanan konsultasi dan jadwal otomatis klinik untuk efisiensi yang lebih baik.'
+      a: 'Fitur booking saat ini telah diintegrasikan langsung ke dalam layanan konsultasi klinik untuk efisiensi yang lebih baik.'
     },
     {
       q: 'Apakah data rekam medis aman?',

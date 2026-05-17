@@ -67,6 +67,24 @@ export default function AdminStaf() {
     }
   };
 
+  const toggleStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'Aktif' ? 'Sibuk' : 'Aktif';
+    
+    try {
+      const { error } = await supabase
+        .from('staf')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      setStaffList(prev => prev.map(s => s.id === id ? { ...s, status: newStatus } : s));
+    } catch (error: any) {
+      console.error("Gagal update status:", error.message);
+      alert("Gagal update status: " + error.message);
+    }
+  };
+
   return (
     <div className="admin-body">
       <AdminSidebar active="pengaturan" />
@@ -92,7 +110,7 @@ export default function AdminStaf() {
                       <th>NAMA</th>
                       <th>PERAN</th>
                       <th>STATUS</th>
-                      <th>AKSI</th>
+                      <th style={{ textAlign: 'right' }}>AKSI</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -115,17 +133,25 @@ export default function AdminStaf() {
                           <td className="fw-bold">{s.full_name}</td>
                           <td className="text-val">{s.role}</td>
                           <td>
-                            <span className={s.status === 'Aktif' ? 'text-green' : 'text-val'}>
-                              {s.status}
+                            <span className={s.status === 'Aktif' ? 'text-green' : 'text-orange'}>
+                              {s.status === 'Aktif' ? '● Online' : '● Sibuk'}
                             </span>
                           </td>
-                          <td>
-                            <button 
-                              onClick={() => handleDelete(s.id, s.full_name)}
-                              className="btn-delete"
-                            >
-                              Hapus
-                            </button>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <button 
+                                onClick={() => toggleStatus(s.id, s.status)}
+                                className="btn-status"
+                              >
+                                {s.status === 'Aktif' ? 'Set Sibuk' : 'Set Online'}
+                              </button>
+                              <button 
+                                onClick={() => handleDelete(s.id, s.full_name)}
+                                className="btn-delete"
+                              >
+                                Hapus
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -160,7 +186,11 @@ export default function AdminStaf() {
         .fw-bold { font-weight: 700; color: #1a1a1a; }
         .text-val { font-weight: 600; color: #666; }
         .text-green { color: #2ed573; font-weight: 700; }
+        .text-orange { color: #ffa502; font-weight: 700; }
         
+        .btn-status { background: #f0f0ff; color: #8e52fc; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .btn-status:hover { background: #8e52fc; color: #fff; }
+
         .btn-delete { background: #ffebee; color: #ff4757; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
         .btn-delete:hover { background: #ff4757; color: #fff; }
       `}</style>

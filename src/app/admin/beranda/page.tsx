@@ -20,65 +20,13 @@ export default function AdminBeranda() {
   const [totalPatients, setTotalPatients] = useState(0);
   const [dueReminders, setDueReminders] = useState(0); 
   
-// State Grafik & List Data
+  // State Grafik & List Data
   const [chartHeights, setChartHeights] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [chartCounts, setChartCounts] = useState<number[]>(Array(7).fill(0));
   const [chartLabels, setChartLabels] = useState<string[]>(['S', 'S', 'R', 'K', 'J', 'S', 'M']);
   const [patients, setPatients] = useState<any[]>([]);
   const [liveReminders, setLiveReminders] = useState<any[]>([]);
 
-  useEffect(() => {
-    const fetchStatistikKunjungan = async () => {
-      try {
-        // 1. Buat daftar 7 tanggal terakhir (H-6 sampai Hari Ini)
-        const labels: string[] = [];
-        const dateStrings: string[] = [];
-        
-        for (let i = 6; i >= 0; i--) {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
-          
-          // Format Label untuk di bawah grafik (misal: "29/04")
-          const tgl = d.getDate().toString().padStart(2, '0');
-          const bln = (d.getMonth() + 1).toString().padStart(2, '0');
-          labels.push(`${tgl}/${bln}`);
-          
-          // Format untuk filter database Supabase (YYYY-MM-DD)
-          const yyyy = d.getFullYear();
-          dateStrings.push(`${yyyy}-${bln}-${tgl}`);
-        }
-
-        // Tanggal paling tua dari 7 hari tersebut
-        const startDate = dateStrings[0]; 
-
-        // 2. Ambil data dari Supabase
-        const { data: records, error } = await supabase
-          .from('medical_records')
-          .select('treatment_date')
-          .gte('treatment_date', startDate);
-
-        if (error) throw error;
-
-        // 3. Hitung jumlah kunjungan dan ubah jadi persentase grafik
-        const counts = dateStrings.map(dateStr => 
-          records?.filter(r => r.treatment_date === dateStr).length || 0
-        );
-        const maxKunjungan = Math.max(...counts, 1);
-        const heights = counts.map(count => Math.min((count / maxKunjungan) * 100, 100));
-
-        // 4. Update UI Grafik!
-        setChartCounts(counts);
-        setChartLabels(labels);
-        setChartHeights(heights);
-
-      } catch (error) {
-        console.error("Gagal mengambil data statistik:", error);
-      }
-    };
-
-    fetchStatistikKunjungan();
-  }, [supabase]); 
-  
   useEffect(() => {
     // Pastikan sesi Supabase masih aktif
     const checkSession = async () => {
@@ -157,6 +105,45 @@ export default function AdminBeranda() {
         setLiveReminders(formattedReminders);
       }
 
+      // 4. Logika Grafik (Kunjungan 7 Hari Terakhir)
+      const labels: string[] = [];
+      const dateStrings: string[] = [];
+      const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+      
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const tgl = d.getDate().toString().padStart(2, '0');
+        const bln = (d.getMonth() + 1).toString().padStart(2, '0');
+        const yyyy = d.getFullYear();
+        dateStrings.push(`${yyyy}-${bln}-${tgl}`);
+        labels.push(dayNames[d.getDay()]);
+      }
+
+      const startDate = dateStrings[0]; 
+
+      const { data: records, error: rError } = await supabase
+        .from('medical_records')
+        .select('treatment_date')
+        .gte('treatment_date', startDate);
+
+      if (rError) throw rError;
+
+      const counts = dateStrings.map(dateStr => 
+        records?.filter(r => String(r.treatment_date).startsWith(dateStr)).length || 0
+      );
+      
+      const maxVal = Math.max(...counts, 1);
+      const heights = counts.map(count => Math.round((count / maxVal) * 100));
+
+      setChartCounts(counts);
+      setChartLabels(labels);
+      
+      // Delay sedikit agar transisi height CSS 0 -> value terlihat (Animasi Aktif)
+      setTimeout(() => {
+        setChartHeights(heights);
+      }, 400);
+
     } catch (error) {
       console.error("Dashboard error:", error);
     } finally {
@@ -190,11 +177,13 @@ export default function AdminBeranda() {
               <div className="mini-chart">
                 {chartHeights.map((h, i) => (
                   <div key={i} className="chart-item">
-                    <div 
-                      className="bar" 
-                      style={{ height: `${h}%`, transition: 'height 1s ease' }}
-                      title={`${chartCounts[i]} Kunjungan`}
-                    ></div>
+                    <div className="bar-wrapper">
+                      <div 
+                        className="bar" 
+                        style={{ height: `${h}%`, transition: 'height 1.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
+                        title={`${chartCounts[i]} Kunjungan`}
+                      ></div>
+                    </div>
                     <span className="label">{chartLabels[i]}</span>
                   </div>
                 ))}
@@ -295,8 +284,9 @@ export default function AdminBeranda() {
         .m-label { font-size: 11px; font-weight: 800; color: #a19db5; text-transform: uppercase; letter-spacing: 1px; }
         .m-val { font-size: 36px; font-weight: 900; color: #1a1a1a; margin: 8px 0; }
         .m-sub { font-size: 12px; color: #a19db5; }
-        .mini-chart { display: flex; align-items: flex-end; gap: 14px; height: 80px; margin-top: 10px; }
-        .chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .mini-chart { display: flex; align-items: flex-end; gap: 14px; height: 90px; margin-top: 10px; }
+        .chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }
+        .bar-wrapper { flex: 1; width: 100%; display: flex; align-items: flex-end; }
         .bar { width: 100%; border-radius: 6px; background: linear-gradient(180deg, #8e52fc 0%, #d463f2 100%); min-height: 4px; }
         .label { font-size: 10px; font-weight: 700; color: #a19db5; }
         .banner-btn { width: 100%; background: linear-gradient(135deg, #8e52fc 0%, #6c31e0 100%); padding: 18px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 800; margin-bottom: 32px; transition: transform 0.2s; }
