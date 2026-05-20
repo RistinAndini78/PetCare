@@ -15,7 +15,6 @@ export default function TambahStaf() {
     nama: '',
     email: '',
     peran: '',
-    password: '',
     whatsapp: '',
   });
 
@@ -24,15 +23,12 @@ export default function TambahStaf() {
   };
 
   const handleSubmit = async () => {
-    if (!form.nama || !form.email || !form.peran || !form.password) {
+    if (!form.nama || !form.email || !form.peran) {
       setErrorMsg('Semua kolom harus diisi.');
       return;
     }
 
-    if (form.password.length < 6) {
-      setErrorMsg('Password minimal 6 karakter.');
-      return;
-    }
+    const passwordDefault = '123456';
 
     // Validasi nomor WhatsApp (opsional tapi jika diisi harus valid)
     if (form.whatsapp) {
@@ -50,7 +46,7 @@ export default function TambahStaf() {
       // 1. Buat akun di Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email,
-        password: form.password,
+        password: passwordDefault,
       });
 
       if (authError) throw new Error('Gagal mendaftarkan akun login: ' + authError.message);
@@ -83,7 +79,7 @@ export default function TambahStaf() {
       if (dbError)
         throw new Error('Akun login terbuat, namun gagal menyimpan profil: ' + dbError.message);
 
-      alert('Staf baru berhasil ditambahkan!');
+      alert('Staf baru berhasil ditambahkan! Password default: ' + passwordDefault);
       router.push('/admin/pengaturan/staf');
       router.refresh();
     } catch (err: any) {
@@ -149,11 +145,6 @@ export default function TambahStaf() {
             <p className="field-hint">
               Nomor ini akan tampil di halaman Konsultasi untuk pemilik hewan.
             </p>
-          </div>
-
-          <div className="form-group">
-            <label>Password Awal</label>
-            <input type="password" name="password" placeholder="Minimal 6 karakter" className="f-input" value={form.password} onChange={handleChange} />
           </div>
 
           <button
