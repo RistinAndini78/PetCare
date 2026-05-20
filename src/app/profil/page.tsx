@@ -196,7 +196,7 @@ return (
           <div style={S.list}>
             <Link href="/profil/edit" style={S.row}>
               <div style={S.icon('#f4eeff')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e52fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
-              <div style={S.label}>Edit Profil<span style={S.sub}>Nama, foto, alamat</span></div>
+              <div style={S.label}>Edit Profil<span style={S.sub}>Nama, alamat</span></div>
               <span style={S.arrow}>›</span>
             </Link>
             <Link href="/profil/ganti-password" style={S.row}>
