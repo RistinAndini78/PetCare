@@ -79,7 +79,7 @@ export default function TambahStaf() {
       if (dbError)
         throw new Error('Akun login terbuat, namun gagal menyimpan profil: ' + dbError.message);
 
-      alert('Staf baru berhasil ditambahkan! Password default: ' + passwordDefault);
+      alert('Staf baru berhasil ditambahkan! ' );
       router.push('/admin/pengaturan/staf');
       router.refresh();
     } catch (err: any) {
